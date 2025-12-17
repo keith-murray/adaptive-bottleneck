@@ -1,0 +1,23 @@
+[project]
+name = "adaptive-bottleneck"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Keith T. Murray", email = "murraykeith64@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "jax>=0.8.1",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.8",
+    "optax>=0.2.6",
+    "tensorflow>=2.20.0",
+]
+
+[project.scripts]
+adaptive-bottleneck = "adaptive_bottleneck:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
