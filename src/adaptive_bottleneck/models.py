@@ -63,10 +63,10 @@ def gamma_value_attention_forward(params, X, gamma):
 
 
 # Linear classifier
-def init_classifier_params(key, val_dim, seq_len, scale=0.02):
+def init_classifier_params(key, val_dim, seq_len, out_dim=1, scale=0.02):
     k1, k2 = random.split(key)
     W_out = scale * random.normal(k1, (seq_len * val_dim, 1))
-    b_out = jnp.zeros((1,))
+    b_out = jnp.zeros((out_dim,))
     return {"W_out": W_out, "b_out": b_out}
 
 
@@ -81,5 +81,21 @@ def forward_logits(params_attn, params_clf, X, gamma,):
 
     out_flat = out.reshape(out.shape[0], -1)  # (B, L * D_val)
     bias = jnp.broadcast_to(params_clf["b_out"], (out_flat.shape[0],))  # (B,)
+    logits = (out_flat @ params_clf["W_out"]).squeeze(-1) + bias
+    return logits, attn_w
+
+
+def forward_multinomial_logits(params_attn, params_clf, X, gamma,):
+    """
+    X: (B, L, D_val)
+    returns logits: (B,)
+    """
+    out, attn_w = gamma_value_attention_forward(
+        params_attn, X, gamma=gamma,
+    )  # out: (B, L, D_val)
+
+    out_flat = out.reshape(out.shape[0], -1)  # (B, L * D_val)
+    bias_shape = params_clf["b_out"].shape[-1]
+    bias = jnp.broadcast_to(params_clf["b_out"][None,:], (out_flat.shape[0],bias_shape,))  # (B,)
     logits = (out_flat @ params_clf["W_out"]).squeeze(-1) + bias
     return logits, attn_w
