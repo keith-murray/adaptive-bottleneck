@@ -1,78 +1,85 @@
-import jax
+import jax.random as random
 import jax.numpy as jnp
+import jax.nn as nn
 
 
-def init_gamma_value_attn_params(key, embed_dim, head_dim, max_seq_len, use_pos_proj=True, scale=0.02):
+# Attention mechanism
+def init_gamma_value_attn_params(key, in_dim, attn_dim, val_dim, scale=0.02):
     """
     Initialize parameters for gamma-value self-attention in pure JAX.
 
     Shapes:
-      W_q:    (embed_dim, head_dim)
-      W_k:    (embed_dim, head_dim)
-      W_v:    (embed_dim, head_dim)
-      W_pos:  (max_seq_len, embed_dim)   # only used if embed_dim != seq_len and use_pos_proj=True
+      W_q:    (in_dim, attn_dim)
+      W_k:    (in_dim, attn_dim)
+      W_v:    (in_dim, val_dim)
     """
-    k1, k2, k3, k4 = jax.random.split(key, 4)
+    k1, k2, k3 = random.split(key, 3)
 
     params = {
-        "W_q": scale * jax.random.normal(k1, (embed_dim, head_dim)),
-        "W_k": scale * jax.random.normal(k2, (embed_dim, head_dim)),
-        "W_v": scale * jax.random.normal(k3, (embed_dim, head_dim)),
+        "W_q": scale * random.normal(k1, (in_dim, attn_dim)),
+        "W_k": scale * random.normal(k2, (in_dim, attn_dim)),
+        "W_v": scale * random.normal(k3, (in_dim, val_dim)),
     }
-    if use_pos_proj:
-        params["W_pos"] = scale * jax.random.normal(k4, (max_seq_len, embed_dim))
 
     return params
 
 
-def softmax(x, axis=-1):
-    x = x - jnp.max(x, axis=axis, keepdims=True)
-    return jnp.exp(x) / jnp.sum(jnp.exp(x), axis=axis, keepdims=True)
-
-
-def gamma_value_attention_forward(params, X, gamma, use_pos_proj=True):
+def gamma_value_attention_forward(params, X, gamma):
     """
     Pure JAX forward pass.
 
     Args:
       params: dict from init_gamma_value_attn_params
-      X:      (B, L, D_in) input sequence
+      X:      (B, L, D_in) input sequence; note that it must be that L==D_in
       gamma:  scalar in [0, 1]
-      linear: if True, skip softmax normalization
-      use_pos_proj: if True, use params["W_pos"] when D_in != L
 
     Returns:
-      out:         (B, L, D_h)
+      out:         (B, L, D_val)
       attn_weights:(B, L, L)
     """
     B, L, D_in = X.shape
     D_h = params["W_q"].shape[1]
 
     # Projections
-    Q = X @ params["W_q"]          # (B, L, D_h)
-    K = X @ params["W_k"]          # (B, L, D_h)
+    Q = X @ params["W_q"]          # (B, L, D_attn)
+    K = X @ params["W_k"]          # (B, L, D_attn)
 
-    # Build I_embed with shape (B, L, D_in)
-    if D_in == L:
-        # literal identity basis in embedding space
-        I_embed = jnp.broadcast_to(jnp.eye(L, dtype=X.dtype)[None, :, :], (B, L, D_in))
-    else:
-        if not use_pos_proj:
-            raise ValueError("embed_dim != seq_len but use_pos_proj=False; cannot form I in embed space.")
-        # one-hot positions projected to embed space: (L, D_in)
-        I_embed_single = params["W_pos"][:L, :]   # (L, D_in)
-        I_embed = jnp.broadcast_to(I_embed_single[None, :, :], (B, L, D_in))
+    # Build identity matrix with shape (B, L, D_in)
+    I = jnp.broadcast_to(jnp.eye(L, dtype=X.dtype)[None, :, :], (B, L, D_in))
 
     # Gamma-interpolated input to values
-    X_tilde = (1.0 - gamma) * X + gamma * I_embed  # (B, L, D_in)
+    X_tilde = (1.0 - gamma) * X + gamma * I  # (B, L, D_in)
 
     # Values
-    V = X_tilde @ params["W_v"]   # (B, L, D_h)
+    V = X_tilde @ params["W_v"]   # (B, L, D_val)
 
     # Attention weights
     scores = jnp.einsum("bld,bmd->blm", Q, K) / jnp.sqrt(D_h)   # (B, L, L)
-    attn_weights = softmax(scores, axis=-1)
+    attn_weights = nn.softmax(scores, axis=-1)
 
     # Output
-    out = jnp.einsum("blm,bmd->bld", attn_weights, V)          # (B, L, D_h)
+    out = jnp.einsum("blm,bmd->bld", attn_weights, V)          # (B, L, D_val)
     return out, attn_weights
+
+
+# Linear classifier
+def init_classifier_params(key, val_dim, seq_len, scale=0.02):
+    k1, k2 = random.split(key)
+    W_out = scale * random.normal(k1, (seq_len * val_dim, 1))
+    b_out = jnp.zeros((1,))
+    return {"W_out": W_out, "b_out": b_out}
+
+
+def forward_logits(params_attn, params_clf, X, gamma,):
+    """
+    X: (B, L, D_val)
+    returns logits: (B,)
+    """
+    out, attn_w = gamma_value_attention_forward(
+        params_attn, X, gamma=gamma,
+    )  # out: (B, L, D_val)
+
+    out_flat = out.reshape(out.shape[0], -1)  # (B, L * D_val)
+    bias = jnp.broadcast_to(params_clf["b_out"], (out_flat.shape[0],))  # (B,)
+    logits = (out_flat @ params_clf["W_out"]).squeeze(-1) + bias
+    return logits, attn_w
