@@ -3,9 +3,9 @@ import jax.numpy as jnp
 import tensorflow as tf
 
 
-class BlockComparisonDatasetTF:
+class BlockComparison:
     """
-    Block comparison task (TensorFlow dataset wrapper).
+    Block comparison task implemented as TensorFlow dataset wrapper.
 
     Each example is a set of `num_vectors` one-hot vectors of length `vector_len` (even),
     where "block" means first half vs second half of the vector.
@@ -16,15 +16,15 @@ class BlockComparisonDatasetTF:
     Uses JAX PRNG for reproducibility and exports a tf.data.Dataset.
     """
 
-    def __init__(self, key, num_samples=1000, num_vectors=2, vector_len=6):
-        assert vector_len % 2 == 0, "vector_len must be even"
+    def __init__(self, key, num_samples=1000, num_vectors_and_vector_len=4):
+        assert num_vectors_and_vector_len % 2 == 0, "vector length must be even"
         assert num_samples % 2 == 0, "num_samples must be even for balanced classes"
 
         self.key = key
         self.num_samples = num_samples
-        self.num_vectors = num_vectors
-        self.vector_len = vector_len
-        self.mid = vector_len // 2
+        self.num_vectors = num_vectors_and_vector_len
+        self.vector_len = num_vectors_and_vector_len
+        self.mid = self.vector_len // 2
 
     def generate_subkey(self):
         self.key, subkey = random.split(self.key)
