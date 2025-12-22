@@ -38,7 +38,7 @@ def gamma_value_attention_forward(params, X, gamma):
       attn_weights:(B, L, L)
     """
     B, L, D_in = X.shape
-    D_h = params["W_q"].shape[1]
+    D_attn = params["W_q"].shape[1]
 
     # Projections
     Q = X @ params["W_q"]          # (B, L, D_attn)
@@ -54,7 +54,7 @@ def gamma_value_attention_forward(params, X, gamma):
     V = X_tilde @ params["W_v"]   # (B, L, D_val)
 
     # Attention weights
-    scores = jnp.einsum("bld,bmd->blm", Q, K) / jnp.sqrt(D_h)   # (B, L, L)
+    scores = jnp.einsum("bld,bmd->blm", Q, K) / jnp.sqrt(D_attn)   # (B, L, L)
     attn_weights = nn.softmax(scores, axis=-1)
 
     # Output
