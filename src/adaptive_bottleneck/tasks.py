@@ -144,11 +144,10 @@ class ContextIdentification:
     to then output which item in the context that is most similar to the reference 
     stimuli.
 
-    There are two options for the labe: feature-based or positional-based.
-    - Feature-based :: the output is the item that is most similar
-    - Positional-based :: the output is the idex of the most similar item
-    In both of these, the feature dimension is the same as the number of items in the
-    block.
+    There are two label modes (both return integer labels for cross-entropy over L classes):
+    - Feature mode: predict the *feature index* (0..L-1) of the closest context item.
+    - Position mode: predict the *position in the block* X (0..L-1) of the closest context item.
+      Since X[0] is always the reference, the label is never 0.
 
     Uses JAX PRNG for reproducibility and exports a tf.data.Dataset.
     """
@@ -201,8 +200,10 @@ class ContextIdentification:
 
         Returns:
             X: (L, L) float32 where X[0] is the reference and X[1:] is the context.
-            y: if label_mode=='feature': (L,) float32 one-hot of closest context item.
-               if label_mode=='position': () int32 index in 0..L-2 of closest context item.
+            y: integer label used for cross-entropy over L classes.
+               - if label_mode=='feature': y is the *feature index* (0..L-1) of the closest context item.
+               - if label_mode=='position': y is the *position in X* (0..L-1) of the closest context item.
+                 Note: since X[0] is always the reference, y will never be 0.
         """
         L = self.L
         k_ref, k_ctx = random.split(key)
@@ -252,11 +253,13 @@ class ContextIdentification:
         ctx_vecs = jnp.stack([self._one_hot(i) for i in ctx_idxs], axis=0)
         X = jnp.concatenate([ref_vec[None, :], ctx_vecs], axis=0)  # (L, L)
 
-        # Targets
+        # Targets (integer labels for CE over L classes)
         if self.label_mode == "feature":
-            y = self._one_hot(closest_idx)  # (L,)
+            # feature index of closest context item (0..L-1)
+            y = closest_idx.astype(jnp.int32)
         else:
-            y = closest_pos  # scalar int
+            # position in X of closest context item (1..L-1). 0 is reserved for the reference.
+            y = (closest_pos + 1).astype(jnp.int32)
 
         return X, y
 
@@ -265,8 +268,7 @@ class ContextIdentification:
 
         Returns:
             X: (num_samples, L, L) float32
-            y: if label_mode=='feature': (num_samples, L) float32
-               if label_mode=='position': (num_samples,) int32
+            y: (num_samples,) int32, integer labels for CE over L classes.
         """
         keys = random.split(self.generate_subkey(), self.num_samples)
         Xs, ys = [], []
