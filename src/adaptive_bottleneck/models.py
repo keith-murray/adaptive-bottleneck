@@ -25,8 +25,7 @@ def init_gamma_value_attn_params(key, in_dim, attn_dim, val_dim, scale=0.02):
 
 
 def gamma_value_attention_forward(params, X, gamma):
-    """
-    Pure JAX forward pass.
+    """Softmax gamma-value attention.
 
     Args:
       params: dict from init_gamma_value_attn_params
@@ -56,6 +55,61 @@ def gamma_value_attention_forward(params, X, gamma):
     # Attention weights
     scores = jnp.einsum("bld,bmd->blm", Q, K) / jnp.sqrt(D_attn)   # (B, L, L)
     attn_weights = nn.softmax(scores, axis=-1)
+
+    # Output
+    out = jnp.einsum("blm,bmd->bld", attn_weights, V)          # (B, L, D_val)
+    return out, attn_weights
+
+
+def gamma_value_attention_forward_softmax(params, X, gamma):
+    """Softmax-normalized gamma-value attention.
+
+    This is an explicit alias for `gamma_value_attention_forward` to make call sites
+    unambiguous when comparing softmax vs linear attention.
+
+    Args:
+      params: dict from init_gamma_value_attn_params
+      X:      (B, L, D_in) input sequence; note that it must be that L==D_in
+      gamma:  scalar in [0, 1]
+
+    Returns:
+      out:         (B, L, D_val)
+      attn_weights:(B, L, L)
+    """
+    return gamma_value_attention_forward(params, X, gamma)
+
+
+def gamma_value_attention_forward_linear(params, X, gamma):
+    """Linear gamma-value attention.
+
+    Args:
+      params: dict from init_gamma_value_attn_params
+      X:      (B, L, D_in) input sequence; note that it must be that L==D_in
+      gamma:  scalar in [0, 1]
+
+    Returns:
+      out:         (B, L, D_val)
+      attn_weights:(B, L, L)  (raw scores)
+    """
+    B, L, D_in = X.shape
+    D_attn = params["W_q"].shape[1]
+
+    # Projections
+    Q = X @ params["W_q"]          # (B, L, D_attn)
+    K = X @ params["W_k"]          # (B, L, D_attn)
+
+    # Build identity matrix with shape (B, L, D_in)
+    I = jnp.broadcast_to(jnp.eye(L, dtype=X.dtype)[None, :, :], (B, L, D_in))
+
+    # Gamma-interpolated input to values
+    X_tilde = (1.0 - gamma) * X + gamma * I  # (B, L, D_in)
+
+    # Values
+    V = X_tilde @ params["W_v"]   # (B, L, D_val)
+
+    # Raw attention weights (no softmax)
+    scores = jnp.einsum("bld,bmd->blm", Q, K) / jnp.sqrt(D_attn)   # (B, L, L)
+    attn_weights = scores
 
     # Output
     out = jnp.einsum("blm,bmd->bld", attn_weights, V)          # (B, L, D_val)
