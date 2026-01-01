@@ -8,10 +8,18 @@ from tqdm import tqdm
 
 from adaptive_bottleneck.models import (
     init_gamma_value_attn_params,
-    gamma_value_attention_forward,
+    gamma_value_attention_forward_softmax,
+    gamma_value_attention_forward_linear,
 )
 from adaptive_bottleneck.tasks import ContextIdentification
 from adaptive_bottleneck.save import save_results_json
+
+EPS = 1e-9
+
+ATTN_FNS = {
+    "linear": gamma_value_attention_forward_linear,
+    "softmax": gamma_value_attention_forward_softmax,
+}
 
 
 def ce_with_logits(logits, y):
@@ -29,7 +37,7 @@ def acc_from_logits(logits, y):
     return (preds == y).mean()
 
 
-def forward_task_logits(params_attn, X, gamma, label_mode):
+def forward_task_logits(params_attn, X, gamma, label_mode, attn_kind):
     """Compute logits for ContextIdentification.
 
     X: (B, L, L) one-hot block. X[:, 0, :] is the reference, X[:, 1:, :] is the context.
@@ -50,12 +58,14 @@ def forward_task_logits(params_attn, X, gamma, label_mode):
         X: (B, L, L)
         gamma: scalar float32
         label_mode: 'feature' or 'position'
+        attn_kind: 'linear' or 'softmax'
 
     Returns:
         logits: (B, L)
         attn_w: (B, L, L)
     """
-    out, attn_w = gamma_value_attention_forward(
+    attn_fn = ATTN_FNS[attn_kind]
+    out, attn_w = attn_fn(
         params_attn,
         X,
         gamma=gamma,
@@ -71,37 +81,38 @@ def forward_task_logits(params_attn, X, gamma, label_mode):
     return logits, attn_w
 
 
-def make_train_step(optimizer, gamma, label_mode):
+def make_train_step(optimizer, gamma, label_mode, attn_kind):
     @jax.jit
     def train_step(params, opt_state, X, y):
         def loss_fn(p):
-            logits, _ = forward_task_logits(p, X, gamma=gamma, label_mode=label_mode)
+            logits, _ = forward_task_logits(p, X, gamma=gamma, label_mode=label_mode, attn_kind=attn_kind)
             return ce_with_logits(logits, y)
 
         loss, grads = jax.value_and_grad(loss_fn)(params)
         updates, opt_state2 = optimizer.update(grads, opt_state, params)
         params2 = optax.apply_updates(params, updates)
 
-        logits, _ = forward_task_logits(params2, X, gamma=gamma, label_mode=label_mode)
+        logits, _ = forward_task_logits(params2, X, gamma=gamma, label_mode=label_mode, attn_kind=attn_kind)
         acc = acc_from_logits(logits, y)
         return params2, opt_state2, loss, acc
 
     return train_step
 
 
-def make_eval_step(gamma, label_mode):
+def make_eval_step(gamma, label_mode, attn_kind):
     @jax.jit
     def eval_step(params, X, y):
-        logits, _ = forward_task_logits(params, X, gamma=gamma, label_mode=label_mode)
+        logits, _ = forward_task_logits(params, X, gamma=gamma, label_mode=label_mode, attn_kind=attn_kind)
         return ce_with_logits(logits, y), acc_from_logits(logits, y)
     return eval_step
 
 
-def train_one_gamma(
+def train_one_run(
     *,
     key_init,
     gamma,
     label_mode,
+    attn_kind,
     ds_train,
     ds_test,
     L,
@@ -110,32 +121,37 @@ def train_one_gamma(
     weight_decay,
     show_progress=True,
 ):
-    """Train adaptive bottleneck attention on ContextIdentification for one gamma.
+    """Train adaptive bottleneck attention on ContextIdentification for one run.
 
     Returns:
         history: dict with train_loss/train_acc/test_loss/test_acc lists.
         params_attn: trained attention params.
     """
+    # Capacity choice:
+    # - feature labels require logits over L feature indices -> val_dim must be L.
+    # - position labels (in this experiment) use VALUE output out[:,:,0] -> val_dim should be 1.
+    val_dim = L if label_mode == "feature" else 1
+
     params_attn = init_gamma_value_attn_params(
         key_init,
         in_dim=L,
         attn_dim=L,
-        val_dim=L,
+        val_dim=val_dim,
     )
 
     optimizer = optax.adamw(learning_rate=lr, weight_decay=weight_decay)
     opt_state = optimizer.init(params_attn)
 
     gamma_jax = jnp.array(gamma, dtype=jnp.float32)
-    train_step = make_train_step(optimizer, gamma=gamma_jax, label_mode=label_mode)
-    eval_step = make_eval_step(gamma=gamma_jax, label_mode=label_mode)
+    train_step = make_train_step(optimizer, gamma=gamma_jax, label_mode=label_mode, attn_kind=attn_kind)
+    eval_step = make_eval_step(gamma=gamma_jax, label_mode=label_mode, attn_kind=attn_kind)
 
     history = {"train_loss": [], "train_acc": [], "test_loss": [], "test_acc": []}
 
     epoch_iter = range(epochs)
     pbar = None
     if show_progress:
-        pbar = tqdm(epoch_iter, desc=f"{label_mode} | gamma={gamma:.2f}", total=epochs, leave=True)
+        pbar = tqdm(epoch_iter, desc=f"{label_mode} | {attn_kind} | gamma={gamma:.2f}", total=epochs, leave=True)
         epoch_iter = pbar
 
     for _epoch in epoch_iter:
@@ -181,78 +197,100 @@ def train_one_gamma(
     return history, params_attn
 
 
-def run_gamma_sweep(
+def run_sweep(
     *,
-    seed=0,
+    seeds=(0, 1, 2, 3, 4),
     gammas=(0.0, 0.25, 0.5, 0.75, 1.0),
     label_modes=("feature", "position"),
+    attn_kinds=("linear", "softmax"),
     num_samples=2000,
     L=10,
     allow_ref_in_context=True,
     batch_size=64,
-    epochs=100,
+    epochs=200,
     lr=1e-3,
     weight_decay=1e-4,
-    show_progress=True,
+    show_progress=False,
+    show_combo_progress=True,
     save_path=None,
 ):
-    """Sweep gamma for ContextIdentification under multiple label modes.
+    """Full sweep for ContextIdentification.
+
+    Runs all combinations of (seed, gamma, label_mode, attn_kind) and returns a nested
+    dict suitable for JSON saving.
 
     Returns:
-        results: dict[label_mode][gamma] -> history
+        results[label_mode][attn_kind][gamma][seed] -> history
     """
-    key = random.PRNGKey(seed)
-    key_train, key_test, key_init = random.split(key, 3)
+    # Validate
+    for k in attn_kinds:
+        if k not in ATTN_FNS:
+            raise ValueError(f"Unknown attn_kind={k}. Choose from {list(ATTN_FNS.keys())}")
 
-    # Train/test tasks (separate RNG streams)
-    task_train = ContextIdentification(
-        key_train,
-        num_samples=num_samples,
-        num_vectors_and_vector_len=L,
-        allow_ref_in_context=allow_ref_in_context,
-        label_mode="feature",  # overwritten per mode in loop (dataset must match)
-    )
+    results = {lm: {ak: {float(g): {} for g in gammas} for ak in attn_kinds} for lm in label_modes}
 
-    task_test = ContextIdentification(
-        key_test,
-        num_samples=num_samples,
-        num_vectors_and_vector_len=L,
-        allow_ref_in_context=allow_ref_in_context,
-        label_mode="feature",
-    )
+    # Total combinations for an outer progress bar
+    total_runs = len(seeds) * len(gammas) * len(label_modes) * len(attn_kinds)
+    outer = None
+    if show_combo_progress:
+        outer = tqdm(total=total_runs, desc="Sweep", leave=True)
 
-    results = {}
+    for seed in seeds:
+        # Separate RNG streams per seed
+        key = random.PRNGKey(int(seed))
+        key_train, key_test = random.split(key, 2)
 
-    for label_mode in label_modes:
-        # rebuild datasets per mode so the labels are correct
-        task_train.label_mode = label_mode
-        task_test.label_mode = label_mode
+        # Build tasks once per seed; we will re-generate datasets per label_mode
+        task_train = ContextIdentification(
+            key_train,
+            num_samples=num_samples,
+            num_vectors_and_vector_len=L,
+            allow_ref_in_context=allow_ref_in_context,
+            label_mode="feature",  # overwritten
+        )
+        task_test = ContextIdentification(
+            key_test,
+            num_samples=num_samples,
+            num_vectors_and_vector_len=L,
+            allow_ref_in_context=allow_ref_in_context,
+            label_mode="feature",
+        )
 
-        ds_train = task_train.generate_tf_dataset(batch_size=batch_size, shuffle=True)
-        ds_test = task_test.generate_tf_dataset(batch_size=batch_size, shuffle=False)
+        for label_mode in label_modes:
+            task_train.label_mode = label_mode
+            task_test.label_mode = label_mode
 
-        results[label_mode] = {}
+            ds_train = task_train.generate_tf_dataset(batch_size=batch_size, shuffle=True)
+            ds_test = task_test.generate_tf_dataset(batch_size=batch_size, shuffle=False)
 
-        # fresh init stream per mode
-        key_mode_init = random.fold_in(key_init, 123 if label_mode == "feature" else 456)
+            for attn_kind in attn_kinds:
+                for gamma in gammas:
+                    # fresh init per (seed, label_mode, attn_kind, gamma)
+                    key_init = random.fold_in(key, 10_000 + int(1e6 * float(gamma)))
+                    key_init = random.fold_in(key_init, 123 if label_mode == "feature" else 456)
+                    key_init = random.fold_in(key_init, 789 if attn_kind == "linear" else 987)
 
-        for gamma in gammas:
-            history, _ = train_one_gamma(
-                key_init=key_mode_init,
-                gamma=float(gamma),
-                label_mode=label_mode,
-                ds_train=ds_train,
-                ds_test=ds_test,
-                L=L,
-                epochs=epochs,
-                lr=lr,
-                weight_decay=weight_decay,
-                show_progress=show_progress,
-            )
-            results[label_mode][float(gamma)] = history
+                    history, _ = train_one_run(
+                        key_init=key_init,
+                        gamma=float(gamma),
+                        label_mode=label_mode,
+                        attn_kind=attn_kind,
+                        ds_train=ds_train,
+                        ds_test=ds_test,
+                        L=L,
+                        epochs=epochs,
+                        lr=lr,
+                        weight_decay=weight_decay,
+                        show_progress=show_progress,
+                    )
 
-            # change init key per gamma to reduce accidental coupling
-            key_mode_init = random.fold_in(key_mode_init, int(1e6 * float(gamma)) + 1)
+                    results[label_mode][attn_kind][float(gamma)][int(seed)] = history
+
+                    if outer is not None:
+                        outer.update(1)
+
+    if outer is not None:
+        outer.close()
 
     if save_path is not None:
         save_results_json(results, save_path)
@@ -261,17 +299,19 @@ def run_gamma_sweep(
 
 
 if __name__ == "__main__":
-    results = run_gamma_sweep(
-        seed=0,
+    results = run_sweep(
+        seeds=(0, 1, 2, 3, 4),
         gammas=(0.0, 0.25, 0.5, 0.75, 1.0),
         label_modes=("feature", "position"),
-        num_samples=250,
+        attn_kinds=("linear", "softmax"),
+        num_samples=500,
         L=10,
         allow_ref_in_context=False,
-        batch_size=16,
-        epochs=500,
+        batch_size=20,
+        epochs=2000,
         lr=1e-3,
         weight_decay=1e-4,
-        show_progress=True,
-        save_path="./data/context_identification_gamma_sweep.json",
+        show_progress=False,
+        show_combo_progress=True,
+        save_path="./data/context_identification_full_sweep.json",
     )
