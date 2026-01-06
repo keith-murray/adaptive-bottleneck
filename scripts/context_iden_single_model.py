@@ -183,11 +183,11 @@ if __name__ == "__main__":
     # You can override any of these via environment variables if you want.
     seed = 0
     L = 10
-    num_samples = 2000
+    num_samples = 3200
     allow_ref_in_context = False
     batch_size = 32
-    epochs = 1000
-    lr = 1e-3
+    epochs = 2500
+    lr = 1e-2
     weight_decay = 1e-4
     attn_kind = "softmax"
     show_progress = True
