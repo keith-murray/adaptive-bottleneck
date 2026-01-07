@@ -1,7 +1,7 @@
 import jax
 from jax import random
 import jax.numpy as jnp
-import tensorflow as tf
+import jax_dataloader as jdl
 
 
 class BlockComparison:
@@ -117,22 +117,18 @@ class BlockComparison:
         return X, y
 
     def generate_tf_dataset(self, batch_size, shuffle=True):
-        """
-        Create tf.data.Dataset from generated tensors.
-        """
+        """Create a jdl.DataLoader from generated tensors."""
         X, y = self.generate_jax_tensors()
-        ds = tf.data.Dataset.from_tensor_slices((X, y))
-
-        if shuffle:
-            subkey = self.generate_subkey()
-            ds = ds.shuffle(
-                buffer_size=int(X.shape[0]),
-                reshuffle_each_iteration=True,
-                seed=int(subkey[0]),
-            )
-
-        ds = ds.batch(batch_size, drop_remainder=True).prefetch(2)
-        return ds
+        ds = jdl.ArrayDataset(X, y)
+        dataloader = jdl.DataLoader(
+            ds, 
+            'jax', 
+            batch_size=batch_size, 
+            shuffle=shuffle,
+            drop_last=True,
+            generator=self.generate_subkey(),
+        )
+        return dataloader
     
 
 class ContextIdentification:
@@ -314,17 +310,15 @@ class ContextIdentification:
         return X, y
 
     def generate_tf_dataset(self, batch_size, shuffle=True):
-        """Create a tf.data.Dataset from generated tensors."""
+        """Create a jdl.DataLoader from generated tensors."""
         X, y = self.generate_jax_tensors()
-        ds = tf.data.Dataset.from_tensor_slices((X, y))
-
-        if shuffle:
-            subkey = self.generate_subkey()
-            ds = ds.shuffle(
-                buffer_size=int(X.shape[0]),
-                reshuffle_each_iteration=True,
-                seed=int(subkey[0]),
-            )
-
-        ds = ds.batch(batch_size, drop_remainder=True).prefetch(2)
-        return ds
+        ds = jdl.ArrayDataset(X, y)
+        dataloader = jdl.DataLoader(
+            ds, 
+            'jax', 
+            batch_size=batch_size, 
+            shuffle=shuffle,
+            drop_last=True,
+            generator=self.generate_subkey(),
+        )
+        return dataloader
