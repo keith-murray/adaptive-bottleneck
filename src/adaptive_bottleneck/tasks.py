@@ -116,7 +116,7 @@ class BlockComparison:
 
         return X, y
 
-    def generate_tf_dataset(self, batch_size, shuffle=True):
+    def generate_dataset(self, batch_size, shuffle=True):
         """Create a jdl.DataLoader from generated tensors."""
         X, y = self.generate_jax_tensors()
         ds = jdl.ArrayDataset(X, y)
@@ -153,6 +153,7 @@ class ContextIdentification:
         num_samples=1000,
         num_vectors_and_vector_len=10,
         allow_ref_in_context=True,
+        input_mode="self",
         label_mode="feature",
         geom_p=0.5,
         max_resample_attempts=1024,
@@ -175,6 +176,7 @@ class ContextIdentification:
             "Need L>=4 to guarantee a unique closest target while filling the rest of the context "
             "with strictly farther items (no ties)."
         )
+        assert input_mode in ["self", "cross"]
         assert label_mode in ["feature", "position"], "label_mode must be 'feature' or 'position'"
 
         self.key = key
@@ -185,6 +187,7 @@ class ContextIdentification:
         self.context_size = self.L - 1
 
         self.allow_ref_in_context = bool(allow_ref_in_context)
+        self.input_mode = input_mode
         self.label_mode = label_mode
         self.geom_p = float(geom_p)
         self.max_resample_attempts = int(max_resample_attempts)
@@ -279,8 +282,10 @@ class ContextIdentification:
         # Targets (integer labels for CE over L classes)
         if self.label_mode == "feature":
             y = target_idx.astype(jnp.int32)           # feature index in 0..L-1
-        else:
+        elif self.input_mode == "self":
             y = (closest_pos + 1).astype(jnp.int32)     # position in X: 1..L-1 (0 is reference)
+        else:
+            y = (closest_pos).astype(jnp.int32)     # position in X: 0..L-2
 
         return X, y
 
@@ -309,7 +314,7 @@ class ContextIdentification:
 
         return X, y
 
-    def generate_tf_dataset(self, batch_size, shuffle=True):
+    def generate_dataset(self, batch_size, shuffle=True):
         """Create a jdl.DataLoader from generated tensors."""
         X, y = self.generate_jax_tensors()
         ds = jdl.ArrayDataset(X, y)
