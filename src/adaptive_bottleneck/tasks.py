@@ -151,7 +151,8 @@ class ContextIdentification:
         self,
         key,
         num_samples=1000,
-        num_vectors_and_vector_len=10,
+        num_vectors=10,
+        vector_len=10,
         allow_ref_in_context=True,
         input_mode="self",
         label_mode="feature",
@@ -172,19 +173,14 @@ class ContextIdentification:
                 - "position": target is the integer index (0..L-2) of the closest context item.
             max_resample_attempts: Safety cap for rejection sampling.
         """
-        assert num_vectors_and_vector_len >= 4, (
-            "Need L>=4 to guarantee a unique closest target while filling the rest of the context "
-            "with strictly farther items (no ties)."
-        )
         assert input_mode in ["self", "cross"]
         assert label_mode in ["feature", "position"], "label_mode must be 'feature' or 'position'"
 
         self.key = key
         self.num_samples = int(num_samples)
-        self.L = int(num_vectors_and_vector_len)
-        self.num_vectors = self.L
-        self.vector_len = self.L
-        self.context_size = self.L - 1
+        self.num_vectors = int(num_vectors)
+        self.vector_len = int(vector_len)
+        self.context_size = self.num_vectors - 1
 
         self.allow_ref_in_context = bool(allow_ref_in_context)
         self.input_mode = input_mode
@@ -209,14 +205,14 @@ class ContextIdentification:
                - if label_mode=='position': y is the *position in X* (0..L-1) of the closest context item.
                  Note: since X[0] is always the reference, y will never be 0.
         """
-        L = self.L
+        D = self.vector_len
         k_ref, k_dist, k_sign, k_ctx = random.split(key, 4)
 
         # 1) Sample the reference index
-        ref_idx = random.randint(k_ref, (), 0, L).astype(jnp.int32)  # scalar
+        ref_idx = random.randint(k_ref, (), 0, D).astype(jnp.int32)  # scalar
 
         # Compute the maximum possible distance from ref to any endpoint
-        max_d = jnp.maximum(ref_idx, (L - 1) - ref_idx).astype(jnp.int32)  # in [0, L-1]
+        max_d = jnp.maximum(ref_idx, (D - 1) - ref_idx).astype(jnp.int32)  # in [0, L-1]
 
         # We must choose a target distance d such that there exists at least one index strictly farther.
         # That requires d < max_d, and also d >= 1 (target cannot equal reference).
@@ -232,7 +228,7 @@ class ContextIdentification:
         cand_minus = ref_idx - d
         cand_plus = ref_idx + d
         valid_minus = cand_minus >= 0
-        valid_plus = cand_plus <= (L - 1)
+        valid_plus = cand_plus <= (D - 1)
 
         # Choose between valid candidates (no ties since distance is fixed)
         # If both are valid, sample one with a fair coin.
@@ -244,7 +240,7 @@ class ContextIdentification:
         ).astype(jnp.int32)
 
         # 3) Sample the rest of the context from the strictly-farther pool: |idx-ref| > d
-        all_idxs = jnp.arange(L, dtype=jnp.int32)
+        all_idxs = jnp.arange(D, dtype=jnp.int32)
 
         # Optionally forbid reference appearing in context (constructive pool already excludes distance 0 when d>=1,
         # but keep this for clarity / future modifications).
@@ -260,7 +256,7 @@ class ContextIdentification:
         # Sample remaining L-2 context indices WITH replacement from pool
         # NOTE: repeats are allowed/likely because context_size == vector_len - 1.
         k_ctx_rest = random.fold_in(k_ctx, int(ref_idx))
-        rest_pos = random.randint(k_ctx_rest, (L - 2,), 0, pool_size)
+        rest_pos = random.randint(k_ctx_rest, (self.context_size-1,), 0, pool_size)
         rest_idxs = pool[rest_pos]
 
         # Assemble context indices (length L-1): first element is the unique closest target
