@@ -1,0 +1,53 @@
+\documentclass[12pt]{article}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{multirow}
+\usepackage[margin=0.6in]{geometry}  
+
+\begin{document}
+The attention mechanism can be plainly written as:
+\begin{gather*} 
+\operatorname{Attention}(Q, K, V)=\operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d}}\right) V\\
+\end{gather*}
+
+The cross-attention mechanism can be written as:
+\begin{align*} 
+\operatorname{Cross}&\operatorname{Attention}(X_q, X_c; W_q, W_k, W_v) \\
+&= \operatorname{softmax}\!\left(\frac{(X_qW_q)(X_cW_k)^\top}{\sqrt{d}}\right)(X_cW_v)
+\end{align*}
+
+The relational-attention mechanism can be written as:
+\begin{align*} 
+\operatorname{Relational}&\operatorname{Attention}(X_q, X_c; W_q, W_k, V) \\
+&= \operatorname{softmax}\!\left(\frac{(X_qW_q)(X_cW_k)^\top}{\sqrt{d}}\right)V
+\end{align*}
+
+The adaptable-attention mechanism can be written as:
+\begin{align*} 
+\operatorname{Adaptable}&\operatorname{Attention}(X_q, X_c; \gamma, W_q, W_k, W_v) \\
+&= \operatorname{softmax}\!\left(\frac{(X_qW_q)(X_cW_k)^\top}{\sqrt{d}}\right)\left[(1-\gamma)X+\gamma I\right]W_v
+\end{align*}
+
+The pairwise transitive inference task can be described by:
+\begin{table}[h]
+\centering
+\begin{tabular}{c c c | c}
+\hline
+Obs.? & $x_i$ & $x_j$ & $x_i > x_j$ \\
+\hline
+\multirow{4}{*}{Yes} 
+  & A & B & 1 \\
+  & B & C & 1 \\
+  & B & A & 0 \\
+  & C & B & 0 \\
+\hline
+\multirow{2}{*}{No} 
+  & A & C & 1 \\
+  & C & A & 0 \\
+\hline
+\end{tabular}
+\caption{Truth table for transitive inference.}
+\end{table}
+
+\end{document}
