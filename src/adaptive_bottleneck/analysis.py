@@ -2,6 +2,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+def compute_scores_matrix(
+    params_attn,
+):
+    # --- Extract parameters ---
+    Wq = np.array(params_attn["W_q"])  # (D_in, D_attn)
+    Wk = np.array(params_attn["W_k"])  # (D_in, D_attn)
+
+    D_in, D_attn = Wq.shape
+    L = D_in  # by design
+
+    # --- Identity probe ---
+    X = np.eye(L, dtype=np.float32)[None, :, :]  # (1, L, D_in)
+
+    Q = X @ Wq  # (1, L, D_attn)
+    K = X @ Wk  # (1, L, D_attn)
+
+    scores = (Q @ np.transpose(K, (0, 2, 1))) / np.sqrt(D_attn)  # (1, L, L)
+    S0 = scores[0]
+
+    return S0
+
 def plot_attention_representations(
     params_attn,
     suptitle="Learned attention representations",
@@ -26,17 +47,7 @@ def plot_attention_representations(
     Wk = np.array(params_attn["W_k"])  # (D_in, D_attn)
     Wv = np.array(params_attn["W_v"])  # (D_in, D_val)
 
-    D_in, D_attn = Wq.shape
-    L = D_in  # by design
-
-    # --- Identity probe ---
-    X = np.eye(L, dtype=np.float32)[None, :, :]  # (1, L, D_in)
-
-    Q = X @ Wq  # (1, L, D_attn)
-    K = X @ Wk  # (1, L, D_attn)
-
-    scores = (Q @ np.transpose(K, (0, 2, 1))) / np.sqrt(D_attn)  # (1, L, L)
-    S0 = scores[0]
+    S0 = compute_scores_matrix(params_attn)
 
     # --- Plot ---
     fig, axes = plt.subplots(2, 2, figsize=(8, 7), constrained_layout=True)
