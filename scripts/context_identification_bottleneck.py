@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import jax
 import jax.random as random
 import jax.numpy as jnp
@@ -11,7 +13,7 @@ from adaptive_bottleneck.models import (
     gamma_value_cross_attention_forward,
 )
 from adaptive_bottleneck.tasks import ContextIdentification
-from adaptive_bottleneck.save import save_results_json
+from adaptive_bottleneck.save import save_results_json, _save_params_pkl
 
 
 def ce_with_logits(logits, y):
@@ -193,6 +195,7 @@ def run_sweep(
     weight_decay=1e-4,
     show_progress=False,
     show_combo_progress=True,
+    models_dir=None,
     save_path=None,
 ):
     """Full sweep for ContextIdentification.
@@ -203,6 +206,8 @@ def run_sweep(
     Returns:
         results[label_mode][attn_kind][gamma][seed] -> history
     """
+    if models_dir is not None:
+        models_dir = Path(models_dir)
     results = {lm: {ak: {float(g): {} for g in gammas} for ak in attn_kinds} for lm in label_modes}
 
     # Total combinations for an outer progress bar
@@ -251,7 +256,7 @@ def run_sweep(
                     key_init = random.fold_in(key_init, 123 if label_mode == "feature" else 456)
                     key_init = random.fold_in(key_init, 789 if attn_kind == "linear" else 987)
 
-                    history, _ = train_one_run(
+                    history, params_attn = train_one_run(
                         key_init=key_init,
                         gamma=float(gamma),
                         linear=linear,
@@ -266,6 +271,13 @@ def run_sweep(
                     )
 
                     results[label_mode][attn_kind][float(gamma)][int(seed)] = history
+
+                    # Save model
+                    if models_dir is not None:
+                        gamma_str = f"{gamma:.1f}"  # "0.0" or "1.0"
+                        run_name = f"context_id_{label_mode}_gamma{gamma_str}_{attn_kind}_seed{seed}"
+                        params_path = models_dir / f"{run_name}_params.pkl"
+                        _save_params_pkl(params_attn, params_path)
 
                     if outer is not None:
                         outer.update(1)
@@ -294,5 +306,6 @@ if __name__ == "__main__":
         weight_decay=1e-3,
         show_progress=False,
         show_combo_progress=True,
+        models_dir="./data/context_identification_models/",
         save_path="./data/context_identification_full_sweep.json",
     )
