@@ -28,7 +28,7 @@ def acc_from_logits(logits, y):
     return (preds == y).mean()
 
 
-def forward_dual_logits(params_attn, params_dec, X, gamma, linear):
+def forward_dual_logits(params_attn, params_dec, X, gamma, linear, signed):
     """Compute dual logits for partially-relational task.
 
     X: (B, L, D) one-hot block. X[:, 0, :] is the reference, X[:, 1:, :] is the context.
@@ -48,17 +48,18 @@ def forward_dual_logits(params_attn, params_dec, X, gamma, linear):
         X_q,
         gamma=gamma,
         linear=linear,
+        signed=signed,
     )
 
     return logits_f, logits_p, attn_w
 
 
-def make_train_step(optimizer, gamma, linear):
+def make_train_step(optimizer, gamma, linear, signed):
     @jax.jit
     def train_step(params, opt_state, X, y_f, y_p):
         def loss_fn(p):
             logits_f, logits_p, _ = forward_dual_logits(
-                p["attn"], p["dec"], X, gamma=gamma, linear=linear
+                p["attn"], p["dec"], X, gamma=gamma, linear=linear, signed=signed
             )
             loss_f = ce_with_logits(logits_f, y_f)
             loss_p = ce_with_logits(logits_p, y_p)
@@ -69,7 +70,7 @@ def make_train_step(optimizer, gamma, linear):
         params2 = optax.apply_updates(params, updates)
 
         logits_f, logits_p, _ = forward_dual_logits(
-            params2["attn"], params2["dec"], X, gamma=gamma, linear=linear
+            params2["attn"], params2["dec"], X, gamma=gamma, linear=linear, signed=signed
         )
         acc_f = acc_from_logits(logits_f, y_f)
         acc_p = acc_from_logits(logits_p, y_p)
@@ -78,11 +79,11 @@ def make_train_step(optimizer, gamma, linear):
     return train_step
 
 
-def make_eval_step(gamma, linear):
+def make_eval_step(gamma, linear, signed):
     @jax.jit
     def eval_step(params, X, y_f, y_p):
         logits_f, logits_p, _ = forward_dual_logits(
-            params["attn"], params["dec"], X, gamma=gamma, linear=linear
+            params["attn"], params["dec"], X, gamma=gamma, linear=linear, signed=signed
         )
         loss_f = ce_with_logits(logits_f, y_f)
         loss_p = ce_with_logits(logits_p, y_p)
@@ -98,6 +99,7 @@ def train_one_run(
     key_init,
     gamma,
     linear,
+    signed,
     ds_train,
     ds_test,
     L,
@@ -135,8 +137,8 @@ def train_one_run(
     opt_state = optimizer.init(params)
 
     gamma_jax = jnp.array(gamma, dtype=jnp.float32)
-    train_step = make_train_step(optimizer, gamma=gamma_jax, linear=linear)
-    eval_step = make_eval_step(gamma=gamma_jax, linear=linear)
+    train_step = make_train_step(optimizer, gamma=gamma_jax, linear=linear, signed=signed)
+    eval_step = make_eval_step(gamma=gamma_jax, linear=linear, signed=signed)
 
     history = {
         "train_loss": [],
@@ -152,7 +154,7 @@ def train_one_run(
     if show_progress:
         pbar = tqdm(
             epoch_iter,
-            desc=f"both | linear={linear} | gamma={gamma:.2f}",
+            desc=f"both | linear={linear} | gamma={gamma:.2f} | signed={signed}",
             total=epochs,
             leave=True,
         )
@@ -219,6 +221,7 @@ def run_sweep(
     lr=1e-3,
     weight_decay=1e-4,
     use_bias=False,
+    signed=False,
     show_progress=False,
     show_combo_progress=True,
     models_dir=None,
@@ -229,7 +232,9 @@ def run_sweep(
     Returns:
         results[attn_kind][gamma][seed] -> history
     """
-    _ensure_dir(models_dir)
+    if models_dir is not None:
+        models_dir = Path(models_dir)
+        _ensure_dir(models_dir)
 
     results = {ak: {float(g): {} for g in gammas} for ak in attn_kinds}
 
@@ -275,6 +280,7 @@ def run_sweep(
                     key_init=key_init,
                     gamma=float(gamma),
                     linear=linear,
+                    signed=signed,
                     ds_train=ds_train,
                     ds_test=ds_test,
                     L=L,
@@ -291,7 +297,8 @@ def run_sweep(
 
                 if models_dir is not None:
                     gamma_str = f"{gamma:.2f}".replace(".", "p")
-                    run_name = f"partial_rel_gamma{gamma_str}_{attn_kind}_seed{seed}"
+                    signed_str = "signed" if signed else "unsigned"
+                    run_name = f"partial_rel_gamma{gamma_str}_{attn_kind}_{signed_str}_seed{seed}"
                     params_path = models_dir / f"{run_name}_params.pkl"
                     _save_params_pkl(params, params_path)
 
@@ -320,8 +327,9 @@ if __name__ == "__main__":
         lr=1e-2,
         weight_decay=1e-3,
         use_bias=False,
+        signed=True,
         show_progress=False,
         show_combo_progress=True,
         models_dir=Path("./data/partial_relational_models/"),
-        save_path="./data/partial_relational_sweep.json",
+        save_path="./data/partial_relational_sweep_signed.json",
     )

@@ -65,13 +65,14 @@ def gamma_value_self_attention_forward(params, X, gamma, linear=False):
 
 
 # Cross attention
-def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linear=False):
+def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linear=False, signed=False):
     """
     Cross-attention with gamma-interpolated values:
 
         Q = X_query   @ W_q
         K = X_context @ W_k
-        V = ((1-gamma) * X_context + gamma * I) @ W_v
+        V = ((1-gamma) * X_context + gamma * I) @ W_v       (signed=False)
+        V = ((1-gamma) * X_context - gamma * I) @ W_v       (signed=True)
 
     Args:
         params: dict with keys {"W_q", "W_k", "W_v"}
@@ -82,6 +83,7 @@ def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linea
         X_query:   (B, L_q, D_in)
         gamma: scalar in [0, 1]
         linear (bool): If True, skip softmax and use raw scores as attention weights.
+        signed (bool): If True, use subtraction for identity term to separate feature/position info.
 
     Returns:
         out: (B, L_q, D_val)
@@ -96,10 +98,11 @@ def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linea
 
     # Build identity matrix with shape (B, L_c, D_in)
     I_ctx = jnp.broadcast_to(jnp.eye(L_c, dtype=X_context.dtype)[None, :, :], (B, L_c, D_in))
-    
+
     # Gamma-interpolated values input
-    X_tilde = (1.0 - gamma) * X_context + gamma * I_ctx  # (B, L_c, D_in)
-    V = X_tilde @ params["W_v"]                          # (B, L_c, D_val)
+    sign = -1.0 if signed else 1.0
+    X_tilde = (1.0 - gamma) * X_context + sign * gamma * I_ctx  # (B, L_c, D_in)
+    V = X_tilde @ params["W_v"]                                  # (B, L_c, D_val)
 
     # Attention weights over CONTEXT positions for each QUERY position
     scores = jnp.einsum("bqd,bkd->bqk", Q, K) / jnp.sqrt(D_attn)  # (B, L_q, L_c)
@@ -184,7 +187,7 @@ def init_dual_decoder_params(key, val_dim, num_classes, use_bias=True, scale=0.0
     return params
 
 
-def dual_decoder_cross_attention_forward(params_attn, params_dec, X_context, X_query, gamma, linear=False):
+def dual_decoder_cross_attention_forward(params_attn, params_dec, X_context, X_query, gamma, linear=False, signed=False):
     """Cross-attention with dual decoders for feature and position prediction.
 
     Computes:
@@ -199,6 +202,7 @@ def dual_decoder_cross_attention_forward(params_attn, params_dec, X_context, X_q
         X_query: (B, 1, D_in) query vector (reference)
         gamma: scalar in [0, 1]
         linear: If True, use linear attention (no softmax)
+        signed: If True, use signed interpolation ((1-γ)X - γI) to separate feature/position info
 
     Returns:
         logits_f: (B, num_classes) feature logits
@@ -212,6 +216,7 @@ def dual_decoder_cross_attention_forward(params_attn, params_dec, X_context, X_q
         X_query,
         gamma=gamma,
         linear=linear,
+        signed=signed,
     )  # out: (B, 1, val_dim)
 
     # Squeeze the query dimension: (B, 1, val_dim) -> (B, val_dim)
