@@ -140,10 +140,11 @@ class ContextIdentification:
     to then output which item in the context that is most similar to the reference 
     stimuli.
 
-    There are two label modes (both return integer labels for cross-entropy over L classes):
+    There are three label modes (all return integer labels for cross-entropy over L classes):
     - Feature mode: predict the *feature index* (0..L-1) of the closest context item.
     - Position mode: predict the *position in the block* X (0..L-1) of the closest context item.
       Since X[0] is always the reference, the label is never 0.
+    - Both mode: return both feature and position labels as a tuple (y_feature, y_position).
 
     Uses JAX PRNG for reproducibility and exports a tf.data.Dataset.
     """
@@ -174,7 +175,7 @@ class ContextIdentification:
             max_resample_attempts: Safety cap for rejection sampling.
         """
         assert input_mode in ["self", "cross"]
-        assert label_mode in ["feature", "position"], "label_mode must be 'feature' or 'position'"
+        assert label_mode in ["feature", "position", "both"], "label_mode must be 'feature', 'position', or 'both'"
 
         self.key = key
         self.num_samples = int(num_samples)
@@ -276,14 +277,18 @@ class ContextIdentification:
         X = jnp.concatenate([ref_vec[None, :], ctx_vecs], axis=0)  # (L, L)
 
         # Targets (integer labels for CE over L classes)
-        if self.label_mode == "feature":
-            y = target_idx.astype(jnp.int32)           # feature index in 0..L-1
-        elif self.input_mode == "self":
-            y = (closest_pos + 1).astype(jnp.int32)     # position in X: 1..L-1 (0 is reference)
+        y_feature = target_idx.astype(jnp.int32)  # feature index in 0..L-1
+        if self.input_mode == "self":
+            y_position = (closest_pos + 1).astype(jnp.int32)  # position in X: 1..L-1 (0 is reference)
         else:
-            y = (closest_pos).astype(jnp.int32)     # position in X: 0..L-2
+            y_position = closest_pos.astype(jnp.int32)  # position in X: 0..L-2
 
-        return X, y
+        if self.label_mode == "feature":
+            return X, y_feature
+        elif self.label_mode == "position":
+            return X, y_position
+        else:  # both
+            return X, y_feature, y_position
 
     def generate_jax_tensors(self):
         """Generate full dataset as JAX arrays.
@@ -291,33 +296,60 @@ class ContextIdentification:
         Returns:
             X: (num_samples, L, L) float32
             y: (num_samples,) int32, integer labels for CE over L classes.
+               If label_mode='both', returns (X, y_feature, y_position) instead.
         """
         keys = random.split(self.generate_subkey(), self.num_samples)
-        Xs, ys = [], []
-        for k in keys:
-            X, y = self._sample_one_example(k)
-            Xs.append(X)
-            ys.append(y)
 
-        X = jnp.stack(Xs, axis=0)
-        y = jnp.stack(ys, axis=0)
+        if self.label_mode == "both":
+            Xs, y_features, y_positions = [], [], []
+            for k in keys:
+                X, y_f, y_p = self._sample_one_example(k)
+                Xs.append(X)
+                y_features.append(y_f)
+                y_positions.append(y_p)
 
-        # shuffle consistently
-        k_shuffle = self.generate_subkey()
-        perm = random.permutation(k_shuffle, self.num_samples)
-        X = X[perm]
-        y = y[perm]
+            X = jnp.stack(Xs, axis=0)
+            y_feature = jnp.stack(y_features, axis=0)
+            y_position = jnp.stack(y_positions, axis=0)
 
-        return X, y
+            # shuffle consistently
+            k_shuffle = self.generate_subkey()
+            perm = random.permutation(k_shuffle, self.num_samples)
+            X = X[perm]
+            y_feature = y_feature[perm]
+            y_position = y_position[perm]
+
+            return X, y_feature, y_position
+        else:
+            Xs, ys = [], []
+            for k in keys:
+                X, y = self._sample_one_example(k)
+                Xs.append(X)
+                ys.append(y)
+
+            X = jnp.stack(Xs, axis=0)
+            y = jnp.stack(ys, axis=0)
+
+            # shuffle consistently
+            k_shuffle = self.generate_subkey()
+            perm = random.permutation(k_shuffle, self.num_samples)
+            X = X[perm]
+            y = y[perm]
+
+            return X, y
 
     def generate_dataset(self, batch_size, shuffle=True):
         """Create a jdl.DataLoader from generated tensors."""
-        X, y = self.generate_jax_tensors()
-        ds = jdl.ArrayDataset(X, y)
+        if self.label_mode == "both":
+            X, y_feature, y_position = self.generate_jax_tensors()
+            ds = jdl.ArrayDataset(X, y_feature, y_position)
+        else:
+            X, y = self.generate_jax_tensors()
+            ds = jdl.ArrayDataset(X, y)
         dataloader = jdl.DataLoader(
-            ds, 
-            'jax', 
-            batch_size=batch_size, 
+            ds,
+            'jax',
+            batch_size=batch_size,
             shuffle=shuffle,
             drop_last=True,
             generator=self.generate_subkey(),
