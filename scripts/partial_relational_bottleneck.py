@@ -326,10 +326,10 @@ if __name__ == "__main__":
         epochs=2500,
         lr=1e-2,
         weight_decay=1e-3,
-        use_bias=False,
+        use_bias=True,
         signed=True,
         show_progress=False,
         show_combo_progress=True,
-        models_dir=Path("./data/partial_relational_models/"),
+        models_dir="./data/partial_relational_models/",
         save_path="./data/partial_relational_sweep_signed.json",
     )
