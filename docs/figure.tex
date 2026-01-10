@@ -26,7 +26,7 @@ The relational-attention mechanism can be written as:
 The adaptable-attention mechanism can be written as:
 \begin{align*} 
 \operatorname{Adaptable}&\operatorname{Attention}(X_q, X_c; \gamma, W_q, W_k, W_v) \\
-&= \operatorname{softmax}\!\left(\frac{(X_qW_q)(X_cW_k)^\top}{\sqrt{d}}\right)\left[(1-\gamma)X+\gamma I\right]W_v
+&= \operatorname{softmax}\!\left(\frac{(X_qW_q)(X_cW_k)^\top}{\sqrt{d}}\right)\left[(1-\gamma)X_c+\gamma I\right]W_v
 \end{align*}
 
 The pairwise transitive inference task can be described by:
