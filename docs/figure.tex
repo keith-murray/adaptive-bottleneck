@@ -3,6 +3,7 @@
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{multirow}
+\usepackage[table]{xcolor}
 \usepackage[margin=0.6in]{geometry}  
 
 \begin{document}
@@ -49,5 +50,62 @@ Obs.? & $x_i$ & $x_j$ & $x_i > x_j$ \\
 \end{tabular}
 \caption{Truth table for transitive inference.}
 \end{table}
+
+% ============================================================
+% Context Identification Task
+% ============================================================
+
+\section*{Context Identification Task}
+
+The context identification task requires identifying which context item is closest (in feature space) to a reference query.
+
+\textbf{Inputs (cross-attention mode):}
+\begin{itemize}
+    \item $X_q \in \{0,1\}^{1 \times L}$: Query (reference) one-hot vector
+    \item $X_c \in \{0,1\}^{L \times L}$: Context matrix of one-hot vectors
+\end{itemize}
+
+\vspace{1em}
+\textbf{Example} ($L=5$): Reference has feature index 2.
+
+\[
+X_q = \begin{bmatrix} 0 & 0 & \mathbf{1} & 0 & 0 \end{bmatrix}
+\quad \text{(reference: feature 2)}
+\]
+
+\[
+X_c = \left[
+\begin{array}{ccccc}
+0 & 0 & 0 & 0 & 1 \\
+1 & 0 & 0 & 0 & 0 \\
+1 & 0 & 0 & 0 & 0 \\
+\rowcolor{yellow!40} 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+\end{array}
+\right]
+\begin{array}{l}
+\leftarrow \text{feature 4, dist=2} \\
+\leftarrow \text{feature 0, dist=2} \\
+\leftarrow \text{feature 0, dist=2} \\
+\leftarrow \text{feature 1, dist=1 (closest)} \\
+\leftarrow \text{feature 4, dist=2} \\
+\end{array}
+\]
+
+\vspace{1em}
+\textbf{Targets:}
+
+\vspace{0.5em}
+Feature target (which \emph{feature index} is closest):
+\[
+y_{\text{feature}} = \begin{bmatrix} 0 & \mathbf{1} & 0 & 0 & 0 \end{bmatrix}
+\quad \text{(feature index 1)}
+\]
+
+Position target (which \emph{context position} is closest):
+\[
+y_{\text{position}} = \begin{bmatrix} 0 & 0 & 0 & \mathbf{1} & 0 \end{bmatrix}
+\quad \text{(context position 3)}
+\]
 
 \end{document}
