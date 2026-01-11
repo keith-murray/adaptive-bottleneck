@@ -1,0 +1,150 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[table]{xcolor}
+\usepackage[margin=0.75in]{geometry}
+
+\begin{document}
+
+\section*{Attention Walkthrough: Feature Mode}
+
+This walkthrough illustrates how the learned attention scores enable the model to identify the context item with the closest feature to the query.
+
+\subsection*{Step 1: Learned Scores Matrix}
+
+After training on the feature-identification task, the model learns a banded scores matrix $S$ where nearby features have higher scores:
+
+\[
+S = \begin{bmatrix}
+ 4 &  3 &  1 & -1 & -3 \\
+ 3 &  4 &  3 &  1 & -1 \\
+ 1 &  3 &  4 &  3 &  1 \\
+-1 &  1 &  3 &  4 &  3 \\
+-3 & -1 &  1 &  3 &  4 \\
+\end{bmatrix}
+\quad
+\begin{array}{l}
+\text{Diagonal: highest (same feature)} \\
+\text{Off-diagonal: decreasing with distance}
+\end{array}
+\]
+
+\subsection*{Step 2: Query and Context}
+
+\textbf{Query} (reference): feature index 2
+\[
+X_q = \begin{bmatrix} 0 & 0 & \mathbf{1} & 0 & 0 \end{bmatrix}
+\]
+
+\textbf{Context}: 5 items with features $[0, 4, 0, 4, 1]$
+\[
+X_c = \begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+\rowcolor{green!20} 0 & 1 & 0 & 0 & 0 \\
+\end{bmatrix}
+\begin{array}{l}
+\leftarrow \text{pos 0: feature 0, dist=2} \\
+\leftarrow \text{pos 1: feature 4, dist=2} \\
+\leftarrow \text{pos 2: feature 0, dist=2} \\
+\leftarrow \text{pos 3: feature 4, dist=2} \\
+\leftarrow \text{pos 4: feature 1, dist=1} \\
+\end{array}
+\]
+
+\subsection*{Step 3: Query Selects Row of $S$}
+
+The query's one-hot vector selects row 2 of the scores matrix:
+\[
+X_q \cdot S = \begin{bmatrix} 0 & 0 & 1 & 0 & 0 \end{bmatrix}
+\begin{bmatrix}
+ 4 &  3 &  1 & -1 & -3 \\
+ 3 &  4 &  3 &  1 & -1 \\
+ \rowcolor{yellow!40} 1 &  3 &  4 &  3 &  1 \\
+-1 &  1 &  3 &  4 &  3 \\
+-3 & -1 &  1 &  3 &  4 \\
+\end{bmatrix}
+= \begin{bmatrix} 1 & 3 & 4 & 3 & 1 \end{bmatrix}
+\]
+
+This row encodes: ``how much should I attend to each \emph{feature}?''
+
+\subsection*{Step 4: Assign Scores to Context Positions}
+
+Each context item receives a score based on its feature index:
+\[
+\text{scores} = (X_q \cdot S) \cdot X_c^\top = \begin{bmatrix} 1 & 3 & 4 & 3 & 1 \end{bmatrix}
+\begin{bmatrix}
+1 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 1 & 0 \\
+\end{bmatrix}
+\]
+
+\[
+= \begin{bmatrix} 1 & 1 & 1 & 1 & \mathbf{3} \end{bmatrix}
+\quad
+\begin{array}{l}
+\text{pos 0: feature 0} \leftarrow S[2,0] = 1 \\
+\text{pos 1: feature 4} \leftarrow S[2,4] = 1 \\
+\text{pos 2: feature 0} \leftarrow S[2,0] = 1 \\
+\text{pos 3: feature 4} \leftarrow S[2,4] = 1 \\
+\text{pos 4: feature 1} \leftarrow S[2,1] = 3 \; \checkmark \\
+\end{array}
+\]
+
+\subsection*{Step 5: Softmax Selects Closest}
+
+Applying softmax concentrates probability on the highest score:
+\[
+\text{softmax}\bigl([1, 1, 1, 1, 3]\bigr) \approx \begin{bmatrix} 0.09 & 0.09 & 0.09 & 0.09 & \mathbf{0.65} \end{bmatrix}
+\]
+
+The model attends most strongly to \textbf{position 4}, which contains the context item with the closest feature (feature 1, distance 1 from query feature 2).
+
+\subsection*{Step 6: Compute Values}
+
+With $\gamma = 0$ and learned $W_v = I$ (identity), the values are simply the context vectors:
+\[
+V = \bigl[(1-\gamma) X_c + \gamma I\bigr] W_v = X_c \cdot I = X_c
+\]
+
+\subsection*{Step 7: Weighted Sum of Values}
+
+The output is the attention-weighted sum of values:
+\[
+\text{output} = \text{softmax}(\text{scores}) \cdot X_c = \begin{bmatrix} 0.09 & 0.09 & 0.09 & 0.09 & 0.65 \end{bmatrix}
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+0 & 1 & 0 & 0 & 0 \\
+\end{bmatrix}
+\]
+
+\[
+= \begin{bmatrix} 0.18 & \mathbf{0.65} & 0 & 0 & 0.18 \end{bmatrix}
+\]
+
+\subsection*{Step 8: Prediction}
+
+Taking $\arg\max$ of the output vector:
+\[
+\hat{y} = \arg\max \begin{bmatrix} 0.18 & \mathbf{0.65} & 0 & 0 & 0.18 \end{bmatrix} = 1
+\]
+
+The model correctly predicts \textbf{feature index 1}, which is the feature of the closest context item.
+
+\vspace{1em}
+\hrule
+\vspace{1em}
+
+\textbf{Key insight}: The banded structure of $S$ ensures that context items with features closer to the query's feature receive higher attention weights, enabling the model to solve the feature-identification task.
+
+\end{document}
