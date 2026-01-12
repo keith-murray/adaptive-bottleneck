@@ -1,0 +1,144 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[table]{xcolor}
+\usepackage[margin=0.75in]{geometry}
+
+\begin{document}
+
+\section*{Signed Interpolation for Partial Relational Tasks}
+
+This walkthrough explains why the signed interpolation $(1-\gamma)X - \gamma I$ enables dual decoders to solve both feature and position tasks simultaneously, while standard interpolation $(1-\gamma)X + \gamma I$ fails.
+
+\subsection*{The Problem: Entangled Information}
+
+For a task requiring both feature and position prediction, we need the attention output to preserve both types of information. Consider the standard adaptable bottleneck:
+
+\[
+V = \bigl[(1-\gamma)X_c + \gamma I\bigr]W_v
+\]
+
+At intermediate $\gamma$ values (e.g., $\gamma = 0.5$), the value matrix becomes:
+\[
+V = 0.5 X_c + 0.5 I
+\]
+
+\textbf{Example} ($L=3$): Context item at position 1 with feature 2:
+\[
+X_c[\text{pos 1}] = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}
+\]
+
+After value interpolation ($\gamma=0.5$):
+\[
+V[\text{pos 1}] = 0.5 \begin{bmatrix} 0 & 0 & 1 \end{bmatrix} + 0.5 \begin{bmatrix} 1 & 0 & 0 \end{bmatrix}
+= \begin{bmatrix} 0.5 & 0 & 0.5 \end{bmatrix}
+\]
+
+\textbf{Problem}: Feature info (index 2) and position info (index 0) are now \emph{mixed} in the same vector. Linear decoders cannot separate them:
+\begin{itemize}
+    \item Feature decoder $W_f$ needs to extract ``feature = 2'' from $[0.5, 0, 0.5]$
+    \item Position decoder $W_p$ needs to extract ``position = 0'' from the \emph{same} vector $[0.5, 0, 0.5]$
+\end{itemize}
+
+There exists no linear projection that can simultaneously recover both pieces of information from an entangled representation.
+
+\subsection*{The Solution: Signed Interpolation}
+
+Change the sign on the identity term:
+\[
+V = \bigl[(1-\gamma)X_c - \gamma I\bigr]W_v
+\]
+
+At $\gamma = 0.5$:
+\[
+V = 0.5 X_c - 0.5 I
+\]
+
+\textbf{Same example}: Position 1, feature 2:
+\[
+V[\text{pos 1}] = 0.5 \begin{bmatrix} 0 & 0 & 1 \end{bmatrix} - 0.5 \begin{bmatrix} 1 & 0 & 0 \end{bmatrix}
+= \begin{bmatrix} -0.5 & 0 & 0.5 \end{bmatrix}
+\]
+
+\textbf{Key insight}: The opposite signs create \emph{separable} components:
+\begin{itemize}
+    \item \textbf{Positive component} ($+0.5$ at index 2): feature information
+    \item \textbf{Negative component} ($-0.5$ at index 0): position information
+\end{itemize}
+
+\subsection*{How Dual Decoders Extract Information}
+
+The dual decoders learn to separate the signed components:
+
+\subsubsection*{Feature Decoder Strategy}
+
+$W_f$ learns to pick out \emph{positive} activations (feature signal from $X_c$):
+\[
+W_f \approx \begin{bmatrix}
+1 & 0 & 0 \\
+0 & 1 & 0 \\
+0 & 0 & 1 \\
+\end{bmatrix}
+\quad \text{(identity-like, captures positive part)}
+\]
+
+\[
+\text{logits}_f = V \cdot W_f = \begin{bmatrix} -0.5 & 0 & 0.5 \end{bmatrix}
+\begin{bmatrix}
+1 & 0 & 0 \\
+0 & 1 & 0 \\
+0 & 0 & 1 \\
+\end{bmatrix}
+= \begin{bmatrix} -0.5 & 0 & \mathbf{0.5} \end{bmatrix}
+\]
+
+$\arg\max = 2$ \checkmark \quad (correct feature)
+
+\subsubsection*{Position Decoder Strategy}
+
+$W_p$ learns to pick out \emph{negative} activations (position signal from $-I$):
+\[
+W_p \approx \begin{bmatrix}
+-1 & 0 & 0 \\
+0 & -1 & 0 \\
+0 & 0 & -1 \\
+\end{bmatrix}
+\quad \text{(negative identity, flips sign)}
+\]
+
+\[
+\text{logits}_p = V \cdot W_p = \begin{bmatrix} -0.5 & 0 & 0.5 \end{bmatrix}
+\begin{bmatrix}
+-1 & 0 & 0 \\
+0 & -1 & 0 \\
+0 & 0 & -1 \\
+\end{bmatrix}
+= \begin{bmatrix} \mathbf{0.5} & 0 & -0.5 \end{bmatrix}
+\]
+
+$\arg\max = 0$ \checkmark \quad (correct position)
+
+\subsection*{General Principle: Differential Encoding}
+
+The signed interpolation creates a \textbf{differential encoding}:
+\[
+V[\text{pos } i, \text{ feature } j] = (1-\gamma) \cdot e_j - \gamma \cdot e_i
+\]
+
+where $e_k$ is the $k$-th basis vector. This is analogous to:
+\begin{itemize}
+    \item \textbf{Signal processing}: In-phase vs. quadrature components (I/Q modulation)
+    \item \textbf{Neuroscience}: ON vs. OFF cells in retinal encoding
+    \item \textbf{Linear algebra}: Encoding information in orthogonal subspaces
+\end{itemize}
+
+The opposite polarities act as \emph{tags} that make the information linearly separable, enabling simple linear decoders to extract both signals from the same vector.
+
+\vspace{1em}
+\hrule
+\vspace{1em}
+
+\textbf{Conclusion}: Standard interpolation $(1-\gamma)X + \gamma I$ entangles feature and position information at intermediate $\gamma$ values. The signed variant $(1-\gamma)X - \gamma I$ uses opposite signs to create separable components that dual linear decoders can extract independently.
+
+\end{document}
