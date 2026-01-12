@@ -138,10 +138,10 @@ def make_train_step_single(optimizer, gamma_optimizer):
     return train_step
 
 
-def make_eval_step_single(gamma):
+def make_eval_step_single():
     """Create eval step for single-decoder modes."""
     @jax.jit
-    def eval_step(params_attn, X, y):
+    def eval_step(params_attn, X, y, gamma):
         logits, _ = forward_single_logits(params_attn, X, gamma=gamma)
         loss = ce_with_logits(logits, y)
         acc = acc_from_logits(logits, y)
@@ -193,10 +193,10 @@ def make_train_step_dual(optimizer, gamma_optimizer, signed):
     return train_step
 
 
-def make_eval_step_dual(gamma, signed):
+def make_eval_step_dual(signed):
     """Create eval step for dual-decoder mode."""
     @jax.jit
-    def eval_step(params, X, y_f, y_p):
+    def eval_step(params, X, y_f, y_p, gamma):
         logits_f, logits_p, _ = forward_dual_logits(
             params["attn"], params["dec"], X, gamma=gamma, signed=signed
         )
@@ -272,10 +272,10 @@ def train_one_run(
     # Training/eval steps
     if is_dual:
         train_step = make_train_step_dual(optimizer, gamma_optimizer, signed=signed)
-        eval_step = make_eval_step_dual(gamma=gamma_param, signed=signed)
+        eval_step = make_eval_step_dual(signed=signed)
     else:
         train_step = make_train_step_single(optimizer, gamma_optimizer)
-        eval_step = make_eval_step_single(gamma=gamma_param)
+        eval_step = make_eval_step_single()
 
     # History tracking
     if is_dual:
@@ -316,11 +316,10 @@ def train_one_run(
             tr_acc_f = float(jnp.mean(jnp.stack(train_accs_f)))
             tr_acc_p = float(jnp.mean(jnp.stack(train_accs_p)))
 
-            # Test epoch (need to update eval_step with current gamma)
-            eval_step = make_eval_step_dual(gamma=gamma_param, signed=signed)
+            # Test epoch
             test_losses, test_accs_f, test_accs_p = [], [], []
             for X, y_f, y_p in ds_test:
-                loss, acc_f, acc_p = eval_step(params, X, y_f, y_p)
+                loss, acc_f, acc_p = eval_step(params, X, y_f, y_p, gamma_param)
                 test_losses.append(loss)
                 test_accs_f.append(acc_f)
                 test_accs_p.append(acc_p)
@@ -355,11 +354,10 @@ def train_one_run(
             tr_loss = float(jnp.mean(jnp.stack(train_losses)))
             tr_acc = float(jnp.mean(jnp.stack(train_accs)))
 
-            # Test epoch (need to update eval_step with current gamma)
-            eval_step = make_eval_step_single(gamma=gamma_param)
+            # Test epoch
             test_losses, test_accs = [], []
             for X, y in ds_test:
-                loss, acc = eval_step(params, X, y)
+                loss, acc = eval_step(params, X, y, gamma_param)
                 test_losses.append(loss)
                 test_accs.append(acc)
 
