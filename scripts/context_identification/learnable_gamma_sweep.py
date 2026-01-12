@@ -266,7 +266,7 @@ def train_one_run(
     optimizer = optax.adamw(learning_rate=lr, weight_decay=weight_decay)
     opt_state = optimizer.init(params)
 
-    gamma_optimizer = optax.adamw(learning_rate=gamma_lr, weight_decay=0.0)
+    gamma_optimizer = optax.sgd(learning_rate=gamma_lr,)
     gamma_opt_state = gamma_optimizer.init(gamma_param)
 
     # Training/eval steps
