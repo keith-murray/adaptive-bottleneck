@@ -6,7 +6,7 @@ import jax_dataloader as jdl
 
 class BlockComparison:
     """
-    Block comparison task implemented as TensorFlow dataset wrapper.
+    Block comparison task implemented as jax_dataloader wrapper.
 
     Each example is a set of `num_vectors` one-hot vectors of length `vector_len` (even),
     where "block" means first half vs second half of the vector.
@@ -133,7 +133,7 @@ class BlockComparison:
 
 class ContextIdentification:
     """
-    Context identification task implemented as TensorFlow dataset wrapper.
+    Context identification task implemented as jax_dataloader wrapper.
 
     Each trial involves a block of stimuli where the zeroth stimuli is the reference
     stimuli and the first through the last stimuli are the context. The task is 
@@ -146,7 +146,7 @@ class ContextIdentification:
       Since X[0] is always the reference, the label is never 0.
     - Both mode: return both feature and position labels as a tuple (y_feature, y_position).
 
-    Uses JAX PRNG for reproducibility and exports a tf.data.Dataset.
+    Uses JAX PRNG for reproducibility.
     """
     def __init__(
         self,
