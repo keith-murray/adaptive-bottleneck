@@ -4,6 +4,62 @@ import jax.numpy as jnp
 import jax_dataloader as jdl
 
 
+class XOR:
+    """
+    XOR task implemented as jax_dataloader wrapper.
+
+    Each example is a pair of binary values encoded as 2-dimensional one-hot vectors:
+    - "false" = [1, 0]
+    - "true"  = [0, 1]
+
+    Label = 1.0 if the two inputs differ (XOR=True), 0.0 otherwise (XOR=False).
+
+    Input shape: (num_samples, 2, 2)
+    Label shape: (num_samples,) float32
+    """
+
+    def __init__(self, key, num_samples=1000):
+        self.key = key
+        self.num_samples = num_samples
+
+    def generate_subkey(self):
+        self.key, subkey = random.split(self.key)
+        return subkey
+
+    def generate_jax_tensors(self):
+        """
+        Returns:
+            X: (num_samples, 2, 2) float32 — each row is [x1, x2] as one-hot vectors
+            y: (num_samples,) float32 — XOR label (0.0 or 1.0)
+        """
+        k1, k2, k_shuffle = random.split(self.generate_subkey(), 3)
+
+        x1_bits = random.randint(k1, (self.num_samples,), 0, 2)  # (B,) in {0, 1}
+        x2_bits = random.randint(k2, (self.num_samples,), 0, 2)  # (B,) in {0, 1}
+
+        y = (x1_bits != x2_bits).astype(jnp.float32)
+
+        x1 = jnp.eye(2, dtype=jnp.float32)[x1_bits]  # (B, 2)
+        x2 = jnp.eye(2, dtype=jnp.float32)[x2_bits]  # (B, 2)
+        X = jnp.stack([x1, x2], axis=1)               # (B, 2, 2)
+
+        perm = random.permutation(k_shuffle, self.num_samples)
+        return X[perm], y[perm]
+
+    def generate_dataset(self, batch_size, shuffle=True):
+        """Create a jdl.DataLoader from generated tensors."""
+        X, y = self.generate_jax_tensors()
+        ds = jdl.ArrayDataset(X, y)
+        return jdl.DataLoader(
+            ds,
+            'jax',
+            batch_size=batch_size,
+            shuffle=shuffle,
+            drop_last=True,
+            generator=self.generate_subkey(),
+        )
+
+
 class BlockComparison:
     """
     Block comparison task implemented as jax_dataloader wrapper.
