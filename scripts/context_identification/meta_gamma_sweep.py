@@ -115,11 +115,13 @@ def forward_dual_logits(params_attn, params_dec, X, gamma, signed):
 # Training steps for single decoder
 # ============================================================
 
-def make_train_step_single(optimizer, gamma_optimizer, num_inner_steps):
+def make_train_step_single(optimizer, gamma_optimizer, num_inner_steps, inner_lr):
     """Create meta-optimization training step for single-decoder modes.
 
     Gamma is updated via a meta-gradient: we differentiate through
-    `num_inner_steps` of simulated model-parameter updates.
+    `num_inner_steps` of simulated SGD steps on the model parameters.
+    Plain SGD is used in the inner loop (not AdamW) to keep the
+    computation graph numerically stable for higher-order differentiation.
     """
     @jax.jit
     def train_step(params_attn, gamma, opt_state, gamma_opt_state, X, y):
@@ -128,16 +130,15 @@ def make_train_step_single(optimizer, gamma_optimizer, num_inner_steps):
             return ce_with_logits(logits, y)
 
         # --- Meta-gradient for gamma ---
-        def gamma_meta_loss(p_attn, aux_opt_state, g):
+        def gamma_meta_loss(p_attn, g):
             loss = 0.0
             for _ in range(num_inner_steps):
                 loss_i, grads_attn = jax.value_and_grad(loss_fn, argnums=0)(p_attn, g)
                 loss += loss_i
-                updates, aux_opt_state = optimizer.update(grads_attn, aux_opt_state, p_attn)
-                p_attn = optax.apply_updates(p_attn, updates)
+                p_attn = jax.tree.map(lambda p, gr: p - inner_lr * gr, p_attn, grads_attn)
             return loss
 
-        grads_gamma = jax.grad(gamma_meta_loss, argnums=2)(params_attn, opt_state, gamma)
+        grads_gamma = jax.grad(gamma_meta_loss, argnums=1)(params_attn, gamma)
 
         # Update gamma
         gamma_updates, gamma_opt_state = gamma_optimizer.update(grads_gamma, gamma_opt_state, gamma)
@@ -174,11 +175,13 @@ def make_eval_step_single():
 # Training steps for dual decoder
 # ============================================================
 
-def make_train_step_dual(optimizer, gamma_optimizer, signed, num_inner_steps):
+def make_train_step_dual(optimizer, gamma_optimizer, signed, num_inner_steps, inner_lr):
     """Create meta-optimization training step for dual-decoder mode.
 
     Gamma is updated via a meta-gradient: we differentiate through
-    `num_inner_steps` of simulated model-parameter updates.
+    `num_inner_steps` of simulated SGD steps on the model parameters.
+    Plain SGD is used in the inner loop (not AdamW) to keep the
+    computation graph numerically stable for higher-order differentiation.
     """
     @jax.jit
     def train_step(params, gamma, opt_state, gamma_opt_state, X, y_f, y_p):
@@ -187,19 +190,17 @@ def make_train_step_dual(optimizer, gamma_optimizer, signed, num_inner_steps):
             return ce_with_logits(logits_f, y_f) + ce_with_logits(logits_p, y_p)
 
         # --- Meta-gradient for gamma ---
-        def gamma_meta_loss(p, aux_opt_state, g):
+        def gamma_meta_loss(p, g):
             loss = 0.0
             for _ in range(num_inner_steps):
                 loss_i, (grads_attn, grads_dec) = jax.value_and_grad(
                     loss_fn, argnums=(0, 1)
                 )(p["attn"], p["dec"], g)
                 loss += loss_i
-                grads = {"attn": grads_attn, "dec": grads_dec}
-                updates, aux_opt_state = optimizer.update(grads, aux_opt_state, p)
-                p = optax.apply_updates(p, updates)
+                p = jax.tree.map(lambda param, gr: param - inner_lr * gr, p, {"attn": grads_attn, "dec": grads_dec})
             return loss
 
-        grads_gamma = jax.grad(gamma_meta_loss, argnums=2)(params, opt_state, gamma)
+        grads_gamma = jax.grad(gamma_meta_loss, argnums=1)(params, gamma)
 
         # Update gamma
         gamma_updates, gamma_opt_state = gamma_optimizer.update(grads_gamma, gamma_opt_state, gamma)
@@ -259,6 +260,7 @@ def train_one_run(
     weight_decay,
     gamma_lr,
     num_inner_steps=5,
+    inner_lr=1e-2,
     signed=False,
     show_progress=True,
 ):
@@ -276,6 +278,7 @@ def train_one_run(
         weight_decay: weight decay for model parameters
         gamma_lr: learning rate for gamma
         num_inner_steps: number of inner unroll steps for meta-gradient
+        inner_lr: learning rate for plain-SGD steps inside the inner loop
         signed: whether to use signed interpolation (for 'both' mode)
         show_progress: whether to show progress bar
 
@@ -306,10 +309,10 @@ def train_one_run(
 
     # Training/eval steps
     if is_dual:
-        train_step = make_train_step_dual(optimizer, gamma_optimizer, signed=signed, num_inner_steps=num_inner_steps)
+        train_step = make_train_step_dual(optimizer, gamma_optimizer, signed=signed, num_inner_steps=num_inner_steps, inner_lr=inner_lr)
         eval_step = make_eval_step_dual(signed=signed)
     else:
-        train_step = make_train_step_single(optimizer, gamma_optimizer, num_inner_steps=num_inner_steps)
+        train_step = make_train_step_single(optimizer, gamma_optimizer, num_inner_steps=num_inner_steps, inner_lr=inner_lr)
         eval_step = make_eval_step_single()
 
     # History tracking
@@ -437,6 +440,7 @@ def run_sweep(
     weight_decay=1e-4,
     gamma_lr=1e-3,
     num_inner_steps=5,
+    inner_lr=1e-2,
     signed=True,
     show_progress=False,
     show_combo_progress=True,
@@ -458,6 +462,7 @@ def run_sweep(
         weight_decay: weight decay for model parameters
         gamma_lr: learning rate for gamma
         num_inner_steps: number of inner unroll steps for meta-gradient
+        inner_lr: learning rate for plain-SGD steps inside the inner loop
         signed: whether to use signed interpolation (for 'both' mode)
         show_progress: show per-run progress bars
         show_combo_progress: show overall sweep progress
@@ -523,6 +528,7 @@ def run_sweep(
                     weight_decay=weight_decay,
                     gamma_lr=gamma_lr,
                     num_inner_steps=num_inner_steps,
+                    inner_lr=inner_lr,
                     signed=signed,
                     show_progress=show_progress,
                 )
@@ -563,6 +569,7 @@ if __name__ == "__main__":
         weight_decay=1e-3,
         gamma_lr=1e-2,
         num_inner_steps=5,
+        inner_lr=1e-2,
         signed=True,
         show_progress=False,
         show_combo_progress=True,
