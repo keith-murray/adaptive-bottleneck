@@ -215,6 +215,7 @@ class ContextIdentification:
         label_mode="feature",
         geom_p=0.5,
         max_resample_attempts=1024,
+        positional_codes=False,
     ):
         """Initialize the ContextIdentification task.
 
@@ -229,6 +230,8 @@ class ContextIdentification:
                 - "feature": target is the one-hot feature vector of the closest context item.
                 - "position": target is the integer index (0..L-2) of the closest context item.
             max_resample_attempts: Safety cap for rejection sampling.
+            positional_codes: If True, concatenate one-hot positional codes onto context rows
+                and zero-pad the query row. X shape becomes (num_vectors, vector_len + context_size).
         """
         assert input_mode in ["self", "cross"]
         assert label_mode in ["feature", "position", "both"], "label_mode must be 'feature', 'position', or 'both'"
@@ -244,6 +247,7 @@ class ContextIdentification:
         self.label_mode = label_mode
         self.geom_p = float(geom_p)
         self.max_resample_attempts = int(max_resample_attempts)
+        self.positional_codes = bool(positional_codes)
 
     def generate_subkey(self):
         self.key, subkey = random.split(self.key)
@@ -338,6 +342,13 @@ class ContextIdentification:
             y_position = (closest_pos + 1).astype(jnp.int32)  # position in X: 1..L-1 (0 is reference)
         else:
             y_position = closest_pos.astype(jnp.int32)  # position in X: 0..L-2
+
+        # Optionally concatenate one-hot positional codes
+        if self.positional_codes:
+            pos_codes = jnp.eye(self.context_size, dtype=jnp.float32)  # (context_size, context_size)
+            ctx_with_pos = jnp.concatenate([ctx_vecs, pos_codes], axis=1)  # (context_size, D + context_size)
+            query_padded = jnp.concatenate([ref_vec, jnp.zeros(self.context_size, dtype=jnp.float32)])[None, :]
+            X = jnp.concatenate([query_padded, ctx_with_pos], axis=0)
 
         if self.label_mode == "feature":
             return X, y_feature
