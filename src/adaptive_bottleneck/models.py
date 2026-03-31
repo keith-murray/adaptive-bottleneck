@@ -97,7 +97,7 @@ def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linea
     K = X_context @ params["W_k"]  # (B, L_c, D_attn)
 
     # Build identity matrix with shape (B, L_c, D_in)
-    I_ctx = jnp.broadcast_to(jnp.eye(L_c, dtype=X_context.dtype)[None, :, :], (B, L_c, D_in))
+    I_ctx = jnp.broadcast_to(jnp.eye(L_c, D_in, dtype=X_context.dtype)[None, :, :], (B, L_c, D_in))
 
     # Gamma-interpolated values input
     sign = -1.0 if signed else 1.0
