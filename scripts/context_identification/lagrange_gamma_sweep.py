@@ -28,10 +28,10 @@ The constrained optimal gamma is (document eq.):
     γ* = 0                                    if Q(0)² ≥ Q(1)²
     γ* = 1                                    otherwise
 
-Since α₀, α₁, ρ₀, ρ₁ are pytrees (same shape as W), we reduce them to
-scalars by projecting onto α₀: e.g. scalar_α₁ = ⟨α₁_vec, α₀_vec⟩.
-This recovers the document's 1-D formula while being well-defined for
-arbitrary parameter dimensions.
+Since α₀, α₁, ρ₀, ρ₁ are pytrees (same shape as W), the interior
+formula is evaluated by projecting onto α₀: e.g. scalar_α₁ = ⟨α₁_vec, α₀_vec⟩.
+The boundary condition compares actual gradient norms ‖Q(0)_vec‖² vs
+‖Q(1)_vec‖² to avoid the directional bias of projecting boundary terms.
 
 The gradient at optimal γ follows analytically (no extra forward pass):
 
@@ -98,14 +98,15 @@ def _pytree_lc(pairs):
 # Lagrangian optimal gamma
 # ============================================================
 
-def _optimal_gamma_lagrange(alpha_0, alpha_1, rho_0, rho_1):
+def _optimal_gamma_lagrange(alpha_0, alpha_1, rho_0, rho_1, norm_sq_Q1):
     """Document's closed-form γ* from scalar projections.
 
     Args:
-        alpha_0: ⟨α₀_vec, α₀_vec⟩ = ‖α₀_vec‖²   (always ≥ 0)
-        alpha_1: ⟨α₁_vec, α₀_vec⟩
-        rho_0:   ⟨ρ₀_vec, α₀_vec⟩
-        rho_1:   ⟨ρ₁_vec, α₀_vec⟩
+        alpha_0:    ⟨α₀_vec, α₀_vec⟩ = ‖α₀_vec‖² = ‖Q(0)_vec‖²  (always ≥ 0)
+        alpha_1:    ⟨α₁_vec, α₀_vec⟩
+        rho_0:      ⟨ρ₀_vec, α₀_vec⟩
+        rho_1:      ⟨ρ₁_vec, α₀_vec⟩
+        norm_sq_Q1: ‖(ρ₀_vec - ρ₁_vec)‖² = ‖Q(1)_vec‖²
 
     Returns:
         γ* ∈ [0,1] (JAX scalar)
@@ -123,8 +124,11 @@ def _optimal_gamma_lagrange(alpha_0, alpha_1, rho_0, rho_1):
     is_maximum = ((alpha_1 - rho_1) * Q_star < 0)
     in_range = (gamma_star >= 0.0) & (gamma_star <= 1.0)
 
-    # Boundary: γ=0 if Q(0)²=α₀² ≥ Q(1)²=(ρ₀-ρ₁)²
-    gamma_boundary = jnp.where(alpha_0 ** 2 >= (rho_0 - rho_1) ** 2, 0.0, 1.0)
+    # Boundary: compare actual gradient norms ‖Q(0)‖² vs ‖Q(1)‖².
+    # Q(0)_vec = α₀_vec  →  ‖Q(0)‖² = alpha_0
+    # Q(1)_vec = ρ₀_vec - ρ₁_vec  →  ‖Q(1)‖² = norm_sq_Q1
+    # Use γ=0 if the attention gradient is larger; γ=1 if the relational gradient is larger.
+    gamma_boundary = jnp.where(alpha_0 >= norm_sq_Q1, 0.0, 1.0)
 
     return jnp.where(is_maximum & in_range, gamma_star, gamma_boundary)
 
@@ -211,13 +215,17 @@ def make_train_step(optimizer):
         rho_1_vec   = vjp_R_fn(delta_diff * scale)[0]
 
         # --- Step 4: project onto α₀ to get scalars ---
-        alpha_0 = _pytree_dot(alpha_0_vec, alpha_0_vec)  # = ‖α₀_vec‖²
+        alpha_0 = _pytree_dot(alpha_0_vec, alpha_0_vec)  # = ‖α₀_vec‖² = ‖Q(0)‖²
         alpha_1 = _pytree_dot(alpha_1_vec, alpha_0_vec)
         rho_0   = _pytree_dot(rho_0_vec,   alpha_0_vec)
         rho_1   = _pytree_dot(rho_1_vec,   alpha_0_vec)
 
+        # Actual norm of Q(1)_vec = ρ₀_vec - ρ₁_vec for unbiased boundary check
+        rho_01_vec = _pytree_lc([(1.0, rho_0_vec), (-1.0, rho_1_vec)])
+        norm_sq_Q1 = _pytree_dot(rho_01_vec, rho_01_vec)  # = ‖Q(1)‖²
+
         # --- Step 5: document's closed-form γ* ---
-        gamma = _optimal_gamma_lagrange(alpha_0, alpha_1, rho_0, rho_1)
+        gamma = _optimal_gamma_lagrange(alpha_0, alpha_1, rho_0, rho_1, norm_sq_Q1)
 
         # --- Step 6: gradient at γ* analytically ---
         # ∇_W L(γ) = -Q(γ)_vec
