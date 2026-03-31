@@ -1,0 +1,240 @@
+\documentclass[12pt]{article}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+
+\begin{document}
+
+\section{Relational Bottleneck: Abstractor vs Attention}
+
+Consider a model that interpolates through a parameter $\gamma$, between a transformer
+and an abstractor. This can be done by having a predictor
+that is defined as
+\begin{align}
+    f(X) = \sigma\left( K(X), Q(X) \right) \left(X(1-\gamma) + I\gamma\right)W_{v},
+\end{align}
+this means that $\gamma=1$ gives an abstractor (bottleneck closed, only relational
+information passes through), while $\gamma=0$ gives the standard attention mechanism.
+Note that this model simply linearly interpolates the output between attention and the
+abstractor, so we can write it as
+\begin{align}
+    f(X) = A(W, X)(1-\gamma) + R(W, X)\gamma, \label{eq:linear_interpolation_of_architectures}
+\end{align}
+with $A$ and $R$ denoting the attention and relational bottleneck (abstractor),
+respectively.
+
+So far we have tested this type of architecture for different values of $\gamma$ on tasks
+that vary in the amount of information about the \textit{features} or \textit{position}
+(or \textit{relational} structure). Some preliminary results from Keith show that for
+$\gamma=1$ the model can only solve the positional task (not the feature one, as there is
+no information about $X$ passing through the values), while $\gamma=0$ can only solve the
+feature task (positional information is overwritten by $X$). We will skip some details for
+now, but an important one is that the standard attention mechanism ($\gamma=0$) is able to
+solve the positional task if $X$ includes positional encodings. So if having an abstractor
+is of any help, what could it be? In the original abstractor paper, the authors show that
+this architectural bias helps models learn tasks like sorting or mathematical problems
+faster than without a relational bottleneck. So, let us try adapting $\gamma$ in a way
+that speeds up learning.
+
+\subsection{Adaptive Bottleneck}
+
+Consider a regression task with a loss
+We have a regression problem with loss
+\begin{equation}
+    L = \frac{1}{2}\left(Y - f(X)\right)^2
+\end{equation}
+where $f(X)$ is the linear interpolation between abstractor and attention as in
+
+We can compute the of the loss function with respect to the weights:
+\begin{equation}
+    \frac{dL}{dW} = -(Y - f(X))\left[\frac{dA}{dW}(1-\gamma) + \frac{dR}{dW}\gamma\right]
+\end{equation}
+
+Now, \textbf{let's assume that increasing the size of this gradient by changing $\gamma$ is a good thing}. This is motivating by looking, for instance, the gradient flow limit.
+\begin{equation}
+    \frac{dL}{dt} = -\left\langle\frac{dL}{dW}\right\rangle
+\end{equation}
+so the speed of loss reduction is $\left\langle dL/dW\right\rangle^2$. We write
+\begin{equation}
+    \left\langle \frac{dL}{dW} \right\rangle = -\left\langle (Y - f(X))\left[\frac{dA}{dW}(1-\gamma) + \frac{dR}{dW}\gamma\right] \right\rangle.
+\end{equation} \textbf{This is a bit dangerous,} as we are assuming that the model parameters change smoothly, which is not the case in practice. In fact, we might just overshoot with the gradient update if the step size is too large, which is precisely what we are going to  try here by changing $\gamma$, but we won't go to prison for trying.
+
+First let's define some quantities to make it easier, we define the residuals for the attention and abstractor 
+\begin{equation}
+    \delta_A \equiv Y - A(W,X), \qquad \delta_R \equiv Y - R(W,X)
+\end{equation}
+so that
+\begin{equation}
+    Y - f(X) = \delta_A - (\delta_A - \delta_R)\gamma
+\end{equation}
+We then define the following four $\gamma$-independent expectations:
+\begin{equation}
+    \alpha_0 \equiv \left\langle \delta_A \frac{dA}{dW}\right\rangle, \quad
+    \alpha_1 \equiv \left\langle (\delta_A-\delta_R)\frac{dA}{dW}\right\rangle, \quad
+    \rho_0   \equiv \left\langle \delta_A \frac{dR}{dW}\right\rangle,   \quad
+    \rho_1   \equiv \left\langle (\delta_A-\delta_R)\frac{dR}{dW}\right\rangle
+\end{equation}
+so that
+\begin{equation}
+    \left\langle (Y-f(X))\frac{dA}{dW} \right\rangle = \alpha_0 - \alpha_1\gamma, \qquad
+    \left\langle (Y-f(X))\frac{dR}{dW} \right\rangle = \rho_0  - \rho_1\gamma
+\end{equation}
+Therefore
+\begin{equation}
+    \left\langle \frac{dL}{dW} \right\rangle^2 = \left[\alpha_0 + (\rho_0 - \alpha_0 - \alpha_1)\gamma + (\alpha_1 - \rho_1)\gamma^2\right]^2
+\end{equation}
+
+\subsection*{Critical Points in $\gamma$}
+
+We define the quadratic $Q(\gamma)$ and its derivative $P(\gamma)$:
+\begin{equation}
+    Q(\gamma) \equiv \alpha_0 + (\rho_0 - \alpha_0 - \alpha_1)\gamma + (\alpha_1 - \rho_1)\gamma^2
+\end{equation}
+\begin{equation}
+    P(\gamma) \equiv Q'(\gamma) = (\rho_0 - \alpha_0 - \alpha_1) + 2(\alpha_1 - \rho_1)\gamma
+\end{equation}
+The derivative with respect to $\gamma$ of the speed of loss reduction is
+\begin{equation}
+    \frac{d}{d\gamma}\left\langle \frac{dL}{dW} \right\rangle^2 = 2\,Q(\gamma)\,P(\gamma)
+\end{equation}
+Setting this to zero yields two families of solutions.
+
+\paragraph{Family 1: $P(\gamma^*) = 0$.}
+\begin{equation}
+    \gamma^* = \frac{\alpha_0 + \alpha_1 - \rho_0}{2(\alpha_1 - \rho_1)}
+\end{equation}
+
+\paragraph{Family 2: $Q(\gamma^\pm) = 0$.}
+\begin{equation}
+    \gamma^{\pm} = \frac{(\alpha_0 + \alpha_1 - \rho_0) \pm \sqrt{(\rho_0 - \alpha_0 - \alpha_1)^2 - 4\alpha_0(\alpha_1 - \rho_1)}}{2(\alpha_1 - \rho_1)}
+\end{equation}
+
+\subsection*{Second Derivative and Convexity}
+
+The second derivative of $\langle dL/dW \rangle^2$ with respect to $\gamma$ is
+\begin{equation}
+    \frac{d^2}{d\gamma^2}\left\langle \frac{dL}{dW} \right\rangle^2 = 2\left[P(\gamma)^2 + 2(\alpha_1 - \rho_1)\,Q(\gamma)\right]
+\end{equation}
+
+\paragraph{At Family 1 ($P(\gamma^*) = 0$):}
+\begin{equation}
+    \left.\frac{d^2}{d\gamma^2}\left\langle \frac{dL}{dW} \right\rangle^2\right|_{\gamma^*} = 4(\alpha_1 - \rho_1)\,Q(\gamma^*)
+\end{equation}
+This is a \textbf{maximum} when $(\alpha_1 - \rho_1)\,Q(\gamma^*) < 0$.
+
+\paragraph{At Family 2 ($Q(\gamma^\pm) = 0$):}
+\begin{equation}
+    \left.\frac{d^2}{d\gamma^2}\left\langle \frac{dL}{dW} \right\rangle^2\right|_{\gamma^\pm} = 2\,P(\gamma^\pm)^2 \geq 0
+\end{equation}
+Since this is always non-negative, $\gamma^\pm$ are always \textbf{minima}. Therefore, the maximum
+of the speed of loss reduction is achieved at $\gamma^*$, provided $(\alpha_1-\rho_1)\,Q(\gamma^*) < 0$.
+
+The obvious next step is to include the restriction $1 \geq \gamma \geq 0$ and look for the largest gradient within that range.
+
+Here is the constrained optimization section in LaTeX, to be appended to the previous document:
+latex\subsection*{Constrained Optimization over $\gamma \in [0,1]$}
+
+We now incorporate the restriction $0 \leq \gamma \leq 1$ using KKT conditions.
+Writing the two inequality constraints as $g_1(\gamma) = \gamma \geq 0$ and
+$g_2(\gamma) = 1 - \gamma \geq 0$, the KKT conditions are:
+\begin{equation}
+    \frac{d}{d\gamma}Q(\gamma)^2 - \mu_1 + \mu_2 = 0, \qquad \mu_1, \mu_2 \geq 0
+\end{equation}
+\begin{equation}
+    \mu_1 \gamma = 0, \qquad \mu_2(1-\gamma) = 0
+\end{equation}
+
+\paragraph{Case 1: Interior solution $0 < \gamma < 1$.}
+Both $\mu_1 = \mu_2 = 0$, and we recover the unconstrained critical points:
+\begin{equation}
+    2Q(\gamma)P(\gamma) = 0
+\end{equation}
+with solutions $\gamma^*$ and $\gamma^\pm$ as derived above. The maximum among
+these is $\gamma^*$, as established by the second derivative analysis, provided
+it falls inside $[0,1]$.
+
+\paragraph{Case 2: Boundary $\gamma = 0$.}
+Here $\mu_2 = 0$ and $\mu_1 \geq 0$ must satisfy:
+\begin{equation}
+    \mu_1 = 2Q(0)P(0) = 2\alpha_0(\rho_0 - \alpha_0 - \alpha_1) \geq 0
+\end{equation}
+
+\paragraph{Case 3: Boundary $\gamma = 1$.}
+Here $\mu_1 = 0$ and $\mu_2 \geq 0$ must satisfy:
+\begin{equation}
+    \mu_2 = 2Q(1)P(1) = 2(\rho_0 - \rho_1)(\rho_0 - \alpha_0 + \alpha_1 - 2\rho_1) \geq 0
+\end{equation}
+
+\paragraph{Constrained maximizer.}
+The solution to the constrained problem is:
+\begin{equation}
+    \gamma^{\text{opt}} = \begin{cases}
+        \gamma^* & \text{if } \gamma^* \in [0,1] \text{ and } (\alpha_1-\rho_1)\,Q(\gamma^*) < 0 \\[6pt]
+        0        & \text{if } \gamma^* \notin [0,1] \text{ and } \alpha_0^2 > (\rho_0-\rho_1)^2 \\[6pt]
+        1        & \text{if } \gamma^* \notin [0,1] \text{ and } (\rho_0-\rho_1)^2 > \alpha_0^2
+    \end{cases}
+\end{equation}
+When the unconstrained maximum $\gamma^*$ lies outside $[0,1]$, the objective
+$Q(\gamma)^2$ is monotone over the feasible interval, and the optimum is
+whichever boundary gives a larger $|Q|$, i.e., whichever of $|\alpha_0|$ or
+$|\rho_0 - \rho_1|$ is larger.
+
+Substituting the definitions of $\alpha_0, \alpha_1, \rho_0, \rho_1$ into $\gamma^*$,
+we first expand the numerator and denominator separately. For the numerator:
+\begin{equation}
+    \alpha_0 + \alpha_1 - \rho_0 
+    = \left\langle \delta_A \frac{dA}{dW}\right\rangle 
+    + \left\langle (\delta_A - \delta_R)\frac{dA}{dW}\right\rangle 
+    - \left\langle \delta_A \frac{dR}{dW}\right\rangle
+    = \left\langle (2\delta_A - \delta_R)\frac{dA}{dW} - \delta_A\frac{dR}{dW}\right\rangle
+\end{equation}
+and for the denominator:
+\begin{equation}
+    \alpha_1 - \rho_1 
+    = \left\langle (\delta_A - \delta_R)\frac{dA}{dW}\right\rangle 
+    - \left\langle (\delta_A - \delta_R)\frac{dR}{dW}\right\rangle 
+    = \left\langle (\delta_A - \delta_R)\left(\frac{dA}{dW} - \frac{dR}{dW}\right)\right\rangle
+\end{equation}
+Substituting back $\delta_A = Y - A(W,X)$, $\delta_R = Y - R(W,X)$, and noting
+that $\delta_A - \delta_R = R - A$, the unconstrained optimal mixing parameter is:
+\begin{equation}
+    \gamma^* = \frac{\left\langle (Y - 2A + R)\dfrac{dA}{dW} 
+    - (Y-A)\dfrac{dR}{dW}\right\rangle}
+    {2\left\langle (R-A)\left(\dfrac{dA}{dW} - \dfrac{dR}{dW}\right)\right\rangle}.
+\end{equation}
+
+\paragraph{Constrained solution.} When $\gamma^* \notin [0,1]$, the optimum is
+at one of the boundaries. Evaluating $Q(\gamma)^2$ at the boundaries:
+\begin{equation}
+    Q(0)^2 = \alpha_0^2 = \left\langle (Y - A)\frac{dA}{dW} \right\rangle^2
+\end{equation}
+\begin{equation}
+    Q(1)^2 = (\rho_0 - \rho_1)^2 = \left\langle (Y - R)\frac{dR}{dW} \right\rangle^2
+\end{equation}
+where we used $\rho_0 - \rho_1 = \langle \delta_A \frac{dR}{dW}\rangle - 
+\langle(\delta_A - \delta_R)\frac{dR}{dW}\rangle = \langle \delta_R \frac{dR}{dW}\rangle
+= \langle(Y-R)\frac{dR}{dW}\rangle$. The fully constrained optimal $\gamma$ is
+therefore:
+\begin{equation}
+    \gamma^{\text{opt}} = \begin{cases}
+        \gamma^* 
+        & \text{if } \gamma^* \in [0,1] \text{ and } (\alpha_1-\rho_1)\,Q(\gamma^*) < 0 
+        \\[6pt]
+        0
+        & \text{if } \gamma^* \notin [0,1] \text{ and } 
+        \left\langle (Y-A)\dfrac{dA}{dW} \right\rangle^2 
+        > \left\langle (Y-R)\dfrac{dR}{dW} \right\rangle^2
+        \\[6pt]
+        1        
+        & \text{if } \gamma^* \notin [0,1] \text{ and } 
+        \left\langle (Y-R)\dfrac{dR}{dW} \right\rangle^2 
+        > \left\langle (Y-A)\dfrac{dA}{dW} \right\rangle^2
+    \end{cases}
+\end{equation}
+The boundary conditions have a natural interpretation: $Q(0)^2$ measures how
+well model $A$ alone reduces the loss (its gradient-weighted residual), while
+$Q(1)^2$ measures the same quantity for model $R$ alone. When $\gamma^*$ falls
+outside $[0,1]$, we simply pick whichever single model has the larger gradient
+alignment with its own residuals. This should be pretty easy to implement in JAX ;).
+
+\end{document}
