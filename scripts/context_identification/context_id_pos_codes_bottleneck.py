@@ -12,7 +12,7 @@ from adaptive_bottleneck.models import (
     gamma_value_cross_attention_forward,
 )
 from adaptive_bottleneck.tasks import ContextIdentification
-from adaptive_bottleneck.save import save_results_json, _save_params_pkl
+from adaptive_bottleneck.save import save_results_json, _save_params_pkl, _ensure_dir
 
 
 def ce_with_logits(logits, y):
@@ -194,6 +194,7 @@ def run_sweep(
 
     if models_dir is not None:
         models_dir = Path(models_dir)
+        _ensure_dir(models_dir)
     results = {lm: {ak: {float(g): {} for g in gammas} for ak in attn_kinds} for lm in label_modes}
 
     total_runs = len(seeds) * len(gammas) * len(label_modes) * len(attn_kinds)
@@ -280,7 +281,7 @@ if __name__ == "__main__":
         seeds=(0, 1, 2, 3, 4),
         gammas=(0.0, 0.25, 0.5, 0.75, 1.0),
         label_modes=("feature", "position"),
-        attn_kinds=("softmax"),
+        attn_kinds=("softmax",),
         num_samples=500,
         L=10,
         allow_ref_in_context=False,
