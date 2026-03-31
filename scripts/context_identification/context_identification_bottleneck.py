@@ -13,7 +13,7 @@ from adaptive_bottleneck.models import (
     gamma_value_cross_attention_forward,
 )
 from adaptive_bottleneck.tasks import ContextIdentification
-from adaptive_bottleneck.save import save_results_json, _save_params_pkl
+from adaptive_bottleneck.save import save_results_json, _save_params_pkl, _ensure_dir
 
 
 def ce_with_logits(logits, y):
@@ -208,6 +208,7 @@ def run_sweep(
     """
     if models_dir is not None:
         models_dir = Path(models_dir)
+        _ensure_dir(models_dir)
     results = {lm: {ak: {float(g): {} for g in gammas} for ak in attn_kinds} for lm in label_modes}
 
     # Total combinations for an outer progress bar
