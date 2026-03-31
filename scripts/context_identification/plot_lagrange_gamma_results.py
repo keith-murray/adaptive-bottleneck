@@ -17,8 +17,8 @@ import matplotlib.pyplot as plt
 from adaptive_bottleneck.utils import load_plot_config
 
 
-LABEL_MODES = ("feature", "position", "both")
-MODE_TITLES = {"feature": "Feature", "position": "Position", "both": "Both"}
+LABEL_MODES = ("feature", "position")
+MODE_TITLES = {"feature": "Feature", "position": "Position"}
 
 
 def load_json(path):
@@ -129,11 +129,11 @@ if __name__ == "__main__":
     load_plot_config()
 
     plot_accuracy(
-        results_path="./data/closed_form_gamma_sweep.json",
-        save_path="./results/closed_form_gamma_accuracy.png",
+        results_path="./data/lagrange_gamma_sweep.json",
+        save_path="./results/lagrange_gamma_accuracy.png",
     )
 
     plot_gamma_trajectory(
-        results_path="./data/closed_form_gamma_sweep.json",
-        save_path="./results/closed_form_gamma_trajectory.png",
+        results_path="./data/lagrange_gamma_sweep.json",
+        save_path="./results/lagrange_gamma_trajectory.png",
     )
