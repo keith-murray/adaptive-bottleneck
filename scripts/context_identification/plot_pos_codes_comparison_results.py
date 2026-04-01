@@ -217,17 +217,17 @@ if __name__ == "__main__":
     load_plot_config()
 
     plot_accuracy(
-        results_path="./data/pos_codes_comparison_sweep.json",
-        save_path="./results/pos_codes_comparison_accuracy.png",
+        results_path="./data/pos_codes_comparison_sweep_2x_params.json",
+        save_path="./results/pos_codes_comparison_accuracy_2x_params.png",
     )
 
     plot_gamma_trajectory(
-        results_path="./data/pos_codes_comparison_sweep.json",
-        save_path="./results/pos_codes_comparison_trajectory.png",
+        results_path="./data/pos_codes_comparison_sweep_2x_params.json",
+        save_path="./results/pos_codes_comparison_trajectory_2x_params.png",
     )
 
     make_table(
-        results_path="./data/pos_codes_comparison_sweep.json",
-        save_path="./results/pos_codes_comparison_table.csv",
+        results_path="./data/pos_codes_comparison_sweep_2x_params.json",
+        save_path="./results/pos_codes_comparison_table_2x_params.csv",
         n_final=100,
     )

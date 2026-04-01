@@ -1,0 +1,7 @@
+condition,label_mode,mean,sem,mean_pct,sem_pct,formatted
+adaptive,feature,0.9672,0.0177,96.7,1.8,96.7 ± 1.8
+adaptive,position,0.9453,0.0408,94.5,4.1,94.5 ± 4.1
+adaptive_pos,feature,0.6532,0.0485,65.3,4.9,65.3 ± 4.9
+adaptive_pos,position,0.7073,0.0738,70.7,7.4,70.7 ± 7.4
+attn_pos,feature,0.7218,0.0392,72.2,3.9,72.2 ± 3.9
+attn_pos,position,0.6843,0.0823,68.4,8.2,68.4 ± 8.2
