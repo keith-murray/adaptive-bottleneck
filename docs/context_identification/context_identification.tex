@@ -1,0 +1,59 @@
+\documentclass[border=4pt]{standalone}
+\usepackage{amsmath}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+\usepackage{colortbl}
+\usepackage{array}
+
+\begin{document}
+
+\begin{tcolorbox}[
+    colback=white,
+    colframe=black!60,
+    width=9cm,         % use absolute width instead of \columnwidth
+    arc=4pt,
+    boxrule=0.8pt,
+    title={\textbf{Example Context Identification trial}},
+    fonttitle=\small
+]
+\small
+\textbf{Inputs:}
+\[
+X_q = \begin{bmatrix} 0 & 0 & \mathbf{1} & 0 & 0 \end{bmatrix}
+\quad \text{(reference: feature 2)}
+\]
+\vspace{-1em}
+\[
+X_c = \left[
+\begin{array}{ccccc}
+0 & 0 & 0 & 0 & 1 \\
+1 & 0 & 0 & 0 & 0 \\
+1 & 0 & 0 & 0 & 0 \\
+\rowcolor{yellow!40} 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 \\
+\end{array}
+\right]
+\begin{array}{l}
+\leftarrow \text{feature 4, dist=2} \\
+\leftarrow \text{feature 0, dist=2} \\
+\leftarrow \text{feature 0, dist=2} \\
+\leftarrow \textbf{feature 1, dist=1} \\
+\leftarrow \text{feature 4, dist=2} \\
+\end{array}
+\]
+
+\vspace{0.5em}
+\textbf{Targets:}
+\vspace{-1em}
+\[
+y_{\text{feature}} = \begin{bmatrix} 0 & \mathbf{1} & 0 & 0 & 0 \end{bmatrix}
+\quad \text{(feature index 1)}
+\]
+\vspace{-1em}
+\[
+y_{\text{position}} = \begin{bmatrix} 0 & 0 & 0 & \mathbf{1} & 0 \end{bmatrix}
+\quad \text{(context position 3)}
+\]
+\end{tcolorbox}
+
+\end{document}
