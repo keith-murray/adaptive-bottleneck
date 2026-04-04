@@ -12,6 +12,12 @@ The attention mechanism can be plainly written as:
 \operatorname{Attention}(Q, K, V)=\operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d}}\right) V\\
 \end{gather*}
 
+The self-attention mechanism can be written as:
+\begin{align*} 
+\operatorname{Self}&\operatorname{Attention}(X; W_q, W_k, W_v) \\
+&= \operatorname{softmax}\!\left(\frac{(XW_q)(XW_k)^\top}{\sqrt{d}}\right)(XW_v)
+\end{align*}
+
 The cross-attention mechanism can be written as:
 \begin{align*} 
 \operatorname{Cross}&\operatorname{Attention}(X_q, X_c; W_q, W_k, W_v) \\
