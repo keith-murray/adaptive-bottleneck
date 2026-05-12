@@ -1,0 +1,70 @@
+\documentclass[border=4pt]{standalone}
+\usepackage{amsmath}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+\usepackage{colortbl}
+\usepackage{array}
+
+\begin{document}
+
+\begin{tcolorbox}[
+    colback=white,
+    colframe=black!60,
+    width=6.5cm,
+    arc=4pt,
+    boxrule=0.8pt,
+    title={\textbf{XOR trial: inputs differ}},
+    fonttitle=\small
+]
+\small
+\textbf{Inputs:}
+\[
+X = \begin{bmatrix}
+0 & 1 \\
+1 & 0
+\end{bmatrix}
+\begin{array}{l}
+\leftarrow \text{token 0: \textit{true}} \\
+\leftarrow \text{token 1: \textit{false}}
+\end{array}
+\]
+
+\vspace{0.5em}
+\textbf{Target:}
+\vspace{-1em}
+\[
+y = 1 \quad \text{(\textit{true})}
+\]
+\end{tcolorbox}
+\hspace{0.5em}
+\begin{tcolorbox}[
+    colback=white,
+    colframe=black!60,
+    width=6.5cm,
+    arc=4pt,
+    boxrule=0.8pt,
+    title={\textbf{XOR trial: inputs same}},
+    fonttitle=\small
+]
+\small
+\textbf{Inputs:}
+\[
+X = \begin{bmatrix}
+0 & 1 \\
+0 & 1
+\end{bmatrix}
+\begin{array}{l}
+\leftarrow \text{token 0: \textit{true}} \\
+\leftarrow \text{token 1: \textit{true}}
+\end{array}
+\]
+
+\vspace{0.5em}
+\textbf{Target:}
+\vspace{-1em}
+\[
+y = 0 \quad \text{(\textit{false})}
+\]
+\end{tcolorbox}
+
+\end{document}
