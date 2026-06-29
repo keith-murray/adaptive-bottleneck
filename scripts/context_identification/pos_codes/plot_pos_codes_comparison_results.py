@@ -64,6 +64,11 @@ def plot_mean_sem(ax, epochs, curves, color, label=None):
     ax.fill_between(epochs, mean - sem, mean + sem, color=color, alpha=0.15)
 
 
+def plot_individual_trajectories(ax, epochs, curves, color):
+    for traj in curves:
+        ax.plot(epochs, traj, color=color, linewidth=0.4, alpha=0.3)
+
+
 # ============================================================
 # Figure 1: test accuracy curves (2 rows × 3 cols)
 # ============================================================
@@ -85,6 +90,7 @@ def plot_accuracy(
             seed_dict = results[cond][mode]
             curves = collect_curves(seed_dict, "test_acc")
             epochs = np.arange(curves.shape[1])
+            plot_individual_trajectories(ax, epochs, curves, color=CONDITION_COLORS[cond])
             plot_mean_sem(ax, epochs, curves, color=CONDITION_COLORS[cond])
 
             if row == 0:
@@ -217,17 +223,17 @@ if __name__ == "__main__":
     load_plot_config()
 
     plot_accuracy(
-        results_path="./data/pos_codes_comparison_sweep_2x_params.json",
-        save_path="./results/pos_codes_comparison_accuracy_2x_params.png",
+        results_path="./data/pos_codes_comparison_sweep.json",
+        save_path="./results/context_identification/pos_codes/pos_codes_comparison_accuracy.png",
     )
 
     plot_gamma_trajectory(
-        results_path="./data/pos_codes_comparison_sweep_2x_params.json",
-        save_path="./results/pos_codes_comparison_trajectory_2x_params.png",
+        results_path="./data/pos_codes_comparison_sweep.json",
+        save_path="./results/context_identification/pos_codes/pos_codes_comparison_trajectory.png",
     )
 
     make_table(
-        results_path="./data/pos_codes_comparison_sweep_2x_params.json",
-        save_path="./results/pos_codes_comparison_table_2x_params.csv",
+        results_path="./data/pos_codes_comparison_sweep.json",
+        save_path="./results/context_identification/pos_codes/pos_codes_comparison_table.csv",
         n_final=100,
     )
