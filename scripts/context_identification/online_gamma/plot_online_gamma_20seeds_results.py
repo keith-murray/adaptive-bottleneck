@@ -128,9 +128,11 @@ def plot_accuracy_gamma_combined(
     acc_color  = plt.cm.plasma(0.3)
     gam_color  = plt.cm.plasma(0.75)
 
-    fig, axes = plt.subplots(2, 1, figsize=(4.5, 3), sharex=True)
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3), sharex=True, sharey=True)
 
-    for ax_acc, mode in zip(axes, LABEL_MODES):
+    COL_TITLES = {"feature": "Feature label", "position": "Positional label"}
+
+    for col, (ax_acc, mode) in enumerate(zip(axes, LABEL_MODES)):
 
         # ── collect curves ──────────────────────────────────────
         acc_curves = collect_curves(results[mode], "test_acc")   # (S, E)
@@ -164,10 +166,12 @@ def plot_accuracy_gamma_combined(
         ax_acc.fill_between(epochs, acc_mean - acc_err, acc_mean + acc_err,
                             color=acc_color, alpha=0.20)
         ax_acc.set_ylim(0.0, 1.05)
-        ax_acc.set_ylabel("Test accuracy", fontsize=8, color=acc_color)
+        if col == 0:
+            ax_acc.set_ylabel("Test accuracy", fontsize=8, color=acc_color)
         ax_acc.tick_params(axis="y", labelcolor=acc_color, labelsize=8)
-        ax_acc.set_title(MODE_TITLES[mode], fontsize=9)
+        ax_acc.set_title(COL_TITLES[mode], fontsize=9)
         ax_acc.grid(alpha=0.2)
+        ax_acc.set_xlabel("Epoch", fontsize=8)
 
         # ── right axis: gamma ────────────────────────────────────
         ax_gam = ax_acc.twinx()
@@ -176,15 +180,16 @@ def plot_accuracy_gamma_combined(
         ax_gam.fill_between(epochs, gam_mean - gam_err, gam_mean + gam_err,
                             color=gam_color, alpha=0.15)
         ax_gam.set_ylim(-0.05, 1.05)
-        ax_gam.set_ylabel("$\\gamma$", fontsize=8, color=gam_color)
-        ax_gam.tick_params(axis="y", labelcolor=gam_color, labelsize=8)
+        if col == len(LABEL_MODES) - 1:
+            ax_gam.set_ylabel("$\\gamma$", fontsize=8, color=gam_color)
+            ax_gam.tick_params(axis="y", labelcolor=gam_color, labelsize=8)
+        else:
+            ax_gam.tick_params(axis="y", right=False, labelright=False)
 
         # ── combined legend ──────────────────────────────────────
         lines  = ax_acc.get_lines() + ax_gam.get_lines()
         labels = [l.get_label() for l in lines]
         ax_acc.legend(lines, labels, fontsize=7, loc="center right")
-
-    axes[-1].set_xlabel("Epoch", fontsize=8)
 
     plt.tight_layout()
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
@@ -214,5 +219,5 @@ if __name__ == "__main__":
     plot_accuracy_gamma_combined(
         epoch_start=0,
         epoch_end=2500,
-        save_path="./results/online_gamma_20seeds_combined_zoom.png"
+        save_path="./results/context_identification/online_gamma/online_gamma_20seeds_combined_zoom.png"
     )

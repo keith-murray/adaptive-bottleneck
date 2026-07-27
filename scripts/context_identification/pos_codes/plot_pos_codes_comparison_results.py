@@ -35,7 +35,13 @@ CONDITION_LABELS = {
     "adaptive_pos": "Adaptive + pos codes",
     "attn_pos":     "Attention + pos codes",
 }
+ROW_LABELS = {
+    "adaptive":     "ARCA",
+    "adaptive_pos": "ARCA (pos. codes)",
+    "attn_pos":     "Cross attention (pos. codes)",
+}
 MODE_TITLES = {"feature": "Feature", "position": "Position"}
+COL_TITLES = {"feature": "Feature label", "position": "Positional label"}
 
 CONDITION_COLORS = {
     "adaptive":     plt.cm.plasma(0.2),
@@ -80,12 +86,12 @@ def plot_accuracy(
     results = load_json(results_path)
 
     fig, axes = plt.subplots(
-        len(LABEL_MODES), len(CONDITIONS),
-        figsize=(12, 5), sharey=True, sharex=True,
+        len(CONDITIONS), len(LABEL_MODES),
+        figsize=(8, 7), sharey=True, sharex=True,
     )
 
-    for row, mode in enumerate(LABEL_MODES):
-        for col, cond in enumerate(CONDITIONS):
+    for row, cond in enumerate(CONDITIONS):
+        for col, mode in enumerate(LABEL_MODES):
             ax = axes[row, col]
             seed_dict = results[cond][mode]
             curves = collect_curves(seed_dict, "test_acc")
@@ -94,16 +100,15 @@ def plot_accuracy(
             plot_mean_sem(ax, epochs, curves, color=CONDITION_COLORS[cond])
 
             if row == 0:
-                ax.set_title(CONDITION_LABELS[cond], fontsize=10)
+                ax.set_title(COL_TITLES[mode], fontsize=10)
             if col == 0:
-                ax.set_ylabel(f"{MODE_TITLES[mode]}\nTest accuracy")
-            if row == len(LABEL_MODES) - 1:
+                ax.set_ylabel(f"{ROW_LABELS[cond]}\nTest accuracy", fontsize=8)
+            if row == len(CONDITIONS) - 1:
                 ax.set_xlabel("Epoch")
 
             ax.set_ylim(0.0, 1.05)
             ax.grid(alpha=0.2)
 
-    fig.suptitle("Positional codes comparison: test accuracy", fontsize=13)
     plt.tight_layout()
 
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
