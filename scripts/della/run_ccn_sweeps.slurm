@@ -8,11 +8,11 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=24:00:00
-#SBATCH --partition=della-cpu          # TODO: set to your allocation's partition (e.g. gpu partition, see below)
+#SBATCH --partition=cpu          # TODO: set to your allocation's partition (e.g. gpu partition, see below)
 # #SBATCH --gres=gpu:1                 # TODO: uncomment (+ switch partition) if you want these on GPU
 # #SBATCH --account=your_allocation    # TODO: set if your group requires an account/allocation name
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=YOUR_NETID@princeton.edu   # TODO
+# #SBATCH --mail-type=END,FAIL
+# #SBATCH --mail-user=YOUR_NETID@princeton.edu   # TODO
 
 # One array task per independent sweep script -- they don't share state so
 # they run fully in parallel as separate SLURM tasks.
@@ -32,7 +32,7 @@ set -euo pipefail
 
 module purge
 module load anaconda3/2024.6            # TODO: adjust to whatever anaconda/python module Della exposes (`module avail anaconda`)
-conda activate adaptive-bottleneck      # TODO: adjust to your env name
+conda activate adaptive_bottleneck      # TODO: adjust to your env name
 # If you're using uv instead of conda, replace the two lines above with:
 # module load python/3.13
 # source /path/to/repo/.venv/bin/activate
