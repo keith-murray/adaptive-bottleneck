@@ -24,6 +24,7 @@ def time_it(f):
 def load_plot_config(use_latex=False):
     import matplotlib
     import matplotlib.pyplot as plt
+    plt.style.use('default')
     if use_latex:
         matplotlib.rc('text', usetex=True)
     TICK_SIZE = 2
