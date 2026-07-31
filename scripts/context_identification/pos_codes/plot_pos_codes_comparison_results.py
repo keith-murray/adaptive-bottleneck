@@ -14,7 +14,7 @@ Result structure: data[condition][label_mode][seed] -> history dict with keys
 Conditions:
   adaptive     — online gamma (init=0.5), no positional codes
   adaptive_pos — online gamma (init=0.5), with positional codes
-  attn_pos     — fixed gamma=0 (self-attention), with positional codes
+  attn_pos     — fixed gamma=0 (self-attention), with positional codese
 """
 
 import json

@@ -38,6 +38,13 @@ conda activate adaptive_bottleneck      # TODO: adjust to your env name
 # source /path/to/repo/.venv/bin/activate
 
 REPO_ROOT="$SLURM_SUBMIT_DIR"
+while [[ ! -f "$REPO_ROOT/pyproject.toml" && "$REPO_ROOT" != "/" ]]; do
+    REPO_ROOT="$(dirname "$REPO_ROOT")"
+done
+if [[ ! -f "$REPO_ROOT/pyproject.toml" ]]; then
+    echo "Could not locate repo root (pyproject.toml) above $SLURM_SUBMIT_DIR" >&2
+    exit 1
+fi
 mkdir -p "$REPO_ROOT/logs"
 
 # These scripts save/load with paths relative to CWD (e.g. "./data/...", not
