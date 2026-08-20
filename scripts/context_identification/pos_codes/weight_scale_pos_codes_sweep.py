@@ -13,12 +13,13 @@ g=1e-8 (128,000 epochs) a single scale's full-history JSON would be roughly
 way. Instead, each run's history is reduced to scalar summary stats
 immediately after training and the full per-epoch history is discarded.
 
-Designed to run as one SLURM array task per scale value
-(--scale-idx == $SLURM_ARRAY_TASK_ID, 0-6); each task runs all
-3 conditions x 2 label_modes x N seeds for its assigned scale.
+Designed to run as one SLURM array task per (scale, condition, label_mode)
+combo (--array=0-41, see slurm/weight_scale_pos_codes_sweep.sh for the
+index->combo mapping); each task runs N seeds for its assigned combo.
 
-Result format (one file per scale):
-  data/weight_scale_pos_codes_sweep/scale_<tag>.json
+Result format: one JSON file per (scale, condition, label_mode) combo, so
+concurrent array tasks sharing a scale never write the same file:
+  data/weight_scale_pos_codes_sweep/scale_<tag>__<condition>__<label_mode>.json
   results[condition][label_mode][seed] -> summary dict
 """
 
@@ -59,6 +60,15 @@ EPOCHS_FOR_SCALE = {
 def scale_tag(scale):
     """'1e-08' style filename-safe tag."""
     return f"{scale:.0e}"
+
+
+def combo_filename(scale, condition, label_mode):
+    """'scale_1e-08__adaptive__feature.json' style per-combo filename.
+
+    One file per (scale, condition, label_mode) so array tasks that share a
+    scale but run different conditions/label_modes never write the same path.
+    """
+    return f"scale_{scale_tag(scale)}__{condition}__{label_mode}.json"
 
 
 def ce_with_logits(logits, y):
@@ -316,7 +326,7 @@ def run_weight_scale_sweep(
     show_combo_progress=True,
     save_models=False,
     models_dir=None,
-    save_path=None,
+    save_dir=None,
 ):
     """Run all conditions x label_modes x seeds for ONE scale value.
 
@@ -339,7 +349,10 @@ def run_weight_scale_sweep(
         show_combo_progress: overall progress bar
         save_models: whether to save trained params
         models_dir: directory to save model parameters (required if save_models)
-        save_path: path to save results JSON
+        save_dir: directory to save one results JSON per (condition, label_mode)
+            combo actually run (see combo_filename) -- NOT a single combined file,
+            so that array tasks sharing a scale but running different
+            conditions/label_modes never clobber each other's output.
 
     Returns:
         results[condition][label_mode][seed] -> summary dict
@@ -421,8 +434,12 @@ def run_weight_scale_sweep(
     if outer is not None:
         outer.close()
 
-    if save_path is not None:
-        save_results_json(results, save_path)
+    if save_dir is not None:
+        save_dir = Path(save_dir)
+        for condition in conditions:
+            for label_mode in label_modes:
+                combo_results = {condition: {label_mode: results[condition][label_mode]}}
+                save_results_json(combo_results, save_dir / combo_filename(scale, condition, label_mode))
 
     return results
 
@@ -489,5 +506,5 @@ if __name__ == "__main__":
             show_combo_progress=True,
             save_models=args.save_models,
             models_dir=models_dir,
-            save_path=str(data_dir / f"scale_{tag}.json"),
+            save_dir=data_dir,
         )

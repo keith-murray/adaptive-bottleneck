@@ -5,9 +5,11 @@ conditions, 2 cols = label modes) but plots weight-init scale g on the
 x-axis (log scale) instead of epoch, and final test accuracy (jittered
 per-seed points + mean) on the y-axis instead of a training curve.
 
-Loads data/weight_scale_pos_codes_sweep/scale_<tag>.json for each of the 7
-SCALES (must all exist -- run weight_scale_pos_codes_sweep.py for every
---scale-idx 0-6 first).
+Loads data/weight_scale_pos_codes_sweep/scale_<tag>__<condition>__<label_mode>.json
+for every (scale, condition, label_mode) combo -- 7 x 3 x 2 = 42 files total
+(must all exist -- run weight_scale_pos_codes_sweep.py for every
+--scale-idx/--conditions/--label-modes combo first, e.g. via the SLURM
+array in slurm/weight_scale_pos_codes_sweep.sh).
 
 Produces:
   1. weight_scale_pos_codes_accuracy.png  -- 6-panel jitter figure
@@ -46,8 +48,22 @@ CONDITION_COLORS = {
 
 
 def load_all_scales(data_dir):
+    """scale -> results[condition][label_mode][seed] -> summary dict.
+
+    Loads one file per (scale, condition, label_mode) combo -- see
+    weight_scale_pos_codes_sweep.py's combo_filename -- and merges them
+    back into the same nested structure a single-file save would have had.
+    """
     data_dir = Path(data_dir)
-    return {s: json.load(open(data_dir / f"scale_{scale_tag(s)}.json")) for s in SCALES}
+    all_results = {s: {cond: {} for cond in CONDITIONS} for s in SCALES}
+    for s in SCALES:
+        tag = scale_tag(s)
+        for cond in CONDITIONS:
+            for mode in LABEL_MODES:
+                path = data_dir / f"scale_{tag}__{cond}__{mode}.json"
+                d = json.load(open(path))
+                all_results[s][cond][mode] = d[cond][mode]
+    return all_results
 
 
 def collect_final_accs(all_results, condition, label_mode):
