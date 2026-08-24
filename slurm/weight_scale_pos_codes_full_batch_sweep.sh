@@ -59,9 +59,9 @@
 
 #SBATCH --job-name=weight_scale_pos_codes_full_batch_sweep
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4            # SET AFTER PROFILING -- must divide N_SEEDS=20 evenly; see IMPORTANT note above for local (non-HPC) plateau point
-#SBATCH --mem=4G                     # SET AFTER PROFILING -- placeholder, full population (27,684 x 7 x 6 floats, more with pos codes) kept resident for the whole array task
-#SBATCH --time=03:00:00              # SET AFTER PROFILING -- placeholder sized for scale_idx=0 combos
+#SBATCH --cpus-per-task=20            # SET AFTER PROFILING -- must divide N_SEEDS=20 evenly; see IMPORTANT note above for local (non-HPC) plateau point
+#SBATCH --mem=40G                     # SET AFTER PROFILING -- placeholder, full population (27,684 x 7 x 6 floats, more with pos codes) kept resident for the whole array task
+#SBATCH --time=04:00:00              # SET AFTER PROFILING -- placeholder sized for scale_idx=0 combos
 #SBATCH --output=slurm/logs/weight_scale_pos_codes_full_batch_sweep_%A_%a.out
 
 N_SEEDS=20   # fixed sweep design
