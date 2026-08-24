@@ -1,3 +1,6 @@
+import itertools
+
+import numpy as np
 import jax
 from jax import random
 import jax.numpy as jnp
@@ -404,6 +407,75 @@ class ContextIdentification:
             y = y[perm]
 
             return X, y
+
+    def generate_all_examples(self):
+        """Exhaustively enumerate every valid trial, for full-batch gradient descent.
+
+        A trial is valid iff no context item is at distance 0 from the reference
+        and exactly one context item achieves the (necessarily >=1) minimum
+        distance to the reference -- precisely the population reachable by
+        _sample_one_example's constructive rejection sampling. See
+        scripts/context_identification/pos_codes/full_batch_combinatorics.py for
+        the closed-form count N(L) this method is guaranteed to produce exactly
+        (with context_size == vector_len, i.e. num_vectors == vector_len + 1).
+
+        Returns:
+            X: (N(L), num_vectors, vector_len [+ context_size if positional_codes]) float32
+            y: (N(L),) int32, or (X, y_feature, y_position) if label_mode == "both"
+        """
+        D = self.vector_len
+        L = self.context_size
+        eye_D = np.eye(D, dtype=np.float32)
+        eye_ctx = np.eye(self.context_size, dtype=np.float32)
+        zeros_ctx = np.zeros(self.context_size, dtype=np.float32)
+
+        Xs, y_features, y_positions = [], [], []
+
+        for ref_idx in range(D):
+            dists = np.abs(np.arange(D) - ref_idx)
+            max_d = int(dists.max())
+            ref_vec = eye_D[ref_idx]
+
+            for d in range(1, max_d + 1):
+                target_values = np.nonzero(dists == d)[0]
+                farther_values = np.nonzero(dists > d)[0]
+                if len(farther_values) == 0:
+                    continue
+
+                for target_val in target_values:
+                    for closest_pos in range(L):
+                        for rest in itertools.product(farther_values, repeat=L - 1):
+                            ctx_idxs = list(rest)
+                            ctx_idxs.insert(closest_pos, int(target_val))
+                            ctx_vecs = eye_D[ctx_idxs]  # (L, D)
+
+                            if self.positional_codes:
+                                ctx_with_pos = np.concatenate([ctx_vecs, eye_ctx], axis=1)
+                                query_padded = np.concatenate([ref_vec, zeros_ctx])[None, :]
+                                X = np.concatenate([query_padded, ctx_with_pos], axis=0)
+                            else:
+                                X = np.concatenate([ref_vec[None, :], ctx_vecs], axis=0)
+
+                            y_feature = int(target_val)
+                            if self.input_mode == "self":
+                                y_position = closest_pos + 1
+                            else:
+                                y_position = closest_pos
+
+                            Xs.append(X)
+                            y_features.append(y_feature)
+                            y_positions.append(y_position)
+
+        X = jnp.asarray(np.stack(Xs, axis=0))
+        y_feature = jnp.asarray(np.array(y_features, dtype=np.int32))
+        y_position = jnp.asarray(np.array(y_positions, dtype=np.int32))
+
+        if self.label_mode == "feature":
+            return X, y_feature
+        elif self.label_mode == "position":
+            return X, y_position
+        else:  # both
+            return X, y_feature, y_position
 
     def generate_dataset(self, batch_size, shuffle=True):
         """Create a jdl.DataLoader from generated tensors."""
