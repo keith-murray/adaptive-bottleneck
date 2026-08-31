@@ -550,7 +550,8 @@ def run_weight_scale_sweep(
                 label_mode=label_mode,
                 positional_codes=use_pos_codes,
             )
-            datasets[(use_pos_codes, label_mode)] = task.generate_all_examples()
+            X, y = task.generate_all_examples()
+            datasets[(use_pos_codes, label_mode)] = (jnp.asarray(X), jnp.asarray(y))
 
     # Seeds within a combo are no longer trained one at a time: train_seeds
     # batches all of them into a single jax.vmap'd computation, so progress

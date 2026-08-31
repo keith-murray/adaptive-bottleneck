@@ -408,6 +408,26 @@ class ContextIdentification:
 
             return X, y
 
+    def _count_all_examples(self):
+        """Exact row count N(L) that generate_all_examples() will produce, computed
+        by summing the same per-(ref_idx, d) combinatorics generate_all_examples
+        iterates over, without materializing any rows. Matches the closed-form
+        formula in scripts/context_identification/pos_codes/full_batch_combinatorics.py
+        (kept independent here so src/ doesn't depend on scripts/)."""
+        D = self.vector_len
+        L = self.context_size
+        total = 0
+        for ref_idx in range(D):
+            dists = np.abs(np.arange(D) - ref_idx)
+            max_d = int(dists.max())
+            for d in range(1, max_d + 1):
+                n_target = int(np.count_nonzero(dists == d))
+                n_farther = int(np.count_nonzero(dists > d))
+                if n_farther == 0:
+                    continue
+                total += n_target * L * (n_farther ** (L - 1))
+        return total
+
     def generate_all_examples(self):
         """Exhaustively enumerate every valid trial, for full-batch gradient descent.
 
@@ -419,9 +439,22 @@ class ContextIdentification:
         the closed-form count N(L) this method is guaranteed to produce exactly
         (with context_size == vector_len, i.e. num_vectors == vector_len + 1).
 
+        Writes directly into preallocated output arrays (rather than building a
+        Python list of N(L) small per-row arrays before stacking) so peak memory
+        stays close to the final array size instead of several times larger --
+        at N(8) ~= 14M rows the list-then-stack approach was memory-prohibitive.
+
+        Returns plain numpy arrays (not jnp) -- at N(8) ~= 14M rows, converting the
+        whole population to a jnp array up front would transiently roughly double
+        peak memory (numpy source + jnp copy coexisting), and for a mini-batch
+        sweep that memory is unnecessary since only per-minibatch slices need to be
+        on-device. Callers that train full-batch (many jitted steps reusing the
+        same X, y) should convert once at the call site with jnp.asarray to avoid
+        a repeated host-to-device copy on every step.
+
         Returns:
-            X: (N(L), num_vectors, vector_len [+ context_size if positional_codes]) float32
-            y: (N(L),) int32, or (X, y_feature, y_position) if label_mode == "both"
+            X: (N(L), num_vectors, vector_len [+ context_size if positional_codes]) float32 numpy array
+            y: (N(L),) int32 numpy array, or (X, y_feature, y_position) if label_mode == "both"
         """
         D = self.vector_len
         L = self.context_size
@@ -429,8 +462,13 @@ class ContextIdentification:
         eye_ctx = np.eye(self.context_size, dtype=np.float32)
         zeros_ctx = np.zeros(self.context_size, dtype=np.float32)
 
-        Xs, y_features, y_positions = [], [], []
+        n_total = self._count_all_examples()
+        feat_dim = D + self.context_size if self.positional_codes else D
+        X = np.empty((n_total, self.num_vectors, feat_dim), dtype=np.float32)
+        y_feature = np.empty(n_total, dtype=np.int32)
+        y_position = np.empty(n_total, dtype=np.int32)
 
+        idx = 0
         for ref_idx in range(D):
             dists = np.abs(np.arange(D) - ref_idx)
             max_d = int(dists.max())
@@ -452,23 +490,20 @@ class ContextIdentification:
                             if self.positional_codes:
                                 ctx_with_pos = np.concatenate([ctx_vecs, eye_ctx], axis=1)
                                 query_padded = np.concatenate([ref_vec, zeros_ctx])[None, :]
-                                X = np.concatenate([query_padded, ctx_with_pos], axis=0)
+                                X[idx] = np.concatenate([query_padded, ctx_with_pos], axis=0)
                             else:
-                                X = np.concatenate([ref_vec[None, :], ctx_vecs], axis=0)
+                                X[idx, 0] = ref_vec
+                                X[idx, 1:] = ctx_vecs
 
-                            y_feature = int(target_val)
+                            y_feature[idx] = int(target_val)
                             if self.input_mode == "self":
-                                y_position = closest_pos + 1
+                                y_position[idx] = closest_pos + 1
                             else:
-                                y_position = closest_pos
+                                y_position[idx] = closest_pos
 
-                            Xs.append(X)
-                            y_features.append(y_feature)
-                            y_positions.append(y_position)
+                            idx += 1
 
-        X = jnp.asarray(np.stack(Xs, axis=0))
-        y_feature = jnp.asarray(np.array(y_features, dtype=np.int32))
-        y_position = jnp.asarray(np.array(y_positions, dtype=np.int32))
+        assert idx == n_total, f"row count mismatch: wrote {idx}, expected {n_total}"
 
         if self.label_mode == "feature":
             return X, y_feature
@@ -494,3 +529,44 @@ class ContextIdentification:
             generator=self.generate_subkey(),
         )
         return dataloader
+
+
+def train_test_split_indices(n_total, seed, train_frac, max_test_frac=0.2):
+    """Train/test index split of an enumerated population, for sampling-percentage
+    sweeps over ContextIdentification.generate_all_examples().
+
+    Draws a single random permutation of range(n_total), determined only by `seed`
+    and `n_total` -- independent of condition, label_mode, and positional_codes, all
+    of which leave row order from generate_all_examples() unchanged. This means, for
+    a fixed seed, the split is identical across every condition/label_mode sharing
+    that population (apples-to-apples comparison), and nested across train_frac:
+    train_idx(p) is a subset of train_idx(p') for p < p', since both are prefixes of
+    the same permutation.
+
+    Test fraction = min(max_test_frac, 1 - train_frac): a fixed max_test_frac
+    (default 20%) reserve when train_frac <= 1 - max_test_frac, shrinking to
+    whatever's left over above that (e.g. 10% left over at train_frac=0.9), and
+    empty at train_frac=1.0 (no held-out data at all).
+
+    Args:
+        n_total: size of the full enumerated population.
+        seed: int seed controlling the shared permutation.
+        train_frac: fraction of n_total to use for training, in (0, 1].
+        max_test_frac: maximum fraction of n_total reserved for testing.
+
+    Returns:
+        train_idx: (round(train_frac * n_total),) int64 numpy array.
+        test_idx: (round(min(max_test_frac, 1 - train_frac) * n_total),) int64
+            numpy array, empty when train_frac == 1.0.
+    """
+    assert 0 < train_frac <= 1.0, f"train_frac must be in (0, 1], got {train_frac}"
+    assert 0 <= max_test_frac < 1.0, f"max_test_frac must be in [0, 1), got {max_test_frac}"
+
+    test_frac = min(max_test_frac, 1.0 - train_frac)
+    train_n = int(round(train_frac * n_total))
+    test_n = min(int(round(test_frac * n_total)), n_total - train_n)
+
+    perm = np.random.default_rng(seed).permutation(n_total)
+    train_idx = perm[:train_n]
+    test_idx = perm[n_total - test_n:]
+    return train_idx, test_idx

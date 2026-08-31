@@ -261,7 +261,8 @@ def run_comparison(
                 label_mode=label_mode,
                 positional_codes=use_pos_codes,
             )
-            datasets[(use_pos_codes, label_mode)] = task.generate_all_examples()
+            X, y = task.generate_all_examples()
+            datasets[(use_pos_codes, label_mode)] = (jnp.asarray(X), jnp.asarray(y))
 
     total_runs = len(seeds) * len(conditions) * len(label_modes)
     outer = None
