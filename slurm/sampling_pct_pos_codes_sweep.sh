@@ -24,28 +24,32 @@
 #
 # PROFILE FIRST with slurm/sampling_pct_pos_codes_sweep_profile.sh (combo-idx 2,
 # the worst case) and fill in the "SET AFTER PROFILING" lines below from its
-# real wall-clock/peak-RSS -- the numbers below are LOCAL (laptop, 8-core, 8GB
-# RAM) estimates only, NOT yet verified on the cluster:
+# real wall-clock/peak-RSS. Do NOT trust the numbers below -- they are NOT a
+# reliable estimate, see the history below.
 #
-#   Local train/eval-step profiling: worst case (adaptive_pos, in_dim=16)
-#   ~7,657 steps/sec train + capped eval -> ~42.3s/run; best case (attn_pos or
-#   adaptive, in_dim=8, fixed gamma) ~12,787 steps/sec -> ~26.0s/run. With a
-#   20% buffer (matching the weight-scale sweep's convention):
-#     worst case: ~50.8s/run x 200 runs/combo (20 pct x 10 seeds) = ~2.82h
-#     best case:  ~31.1s/run x 200 runs/combo                     = ~1.73h
-#   All 6 combos fall in this ~1.7-2.8h range (see note above on why, unlike
-#   the weight-scale sweep, no combo is dramatically longer than another) --
-#   --time below is sized for the worst case + margin.
+#   FIRST profile (job 5990989, 2026-09-01, pre-fix): 3:46:35 wall clock for
+#   20 runs (1 seed x full percentage schedule), 24.18GB peak RSS. This caught
+#   a real bug -- capped periodic eval was still paying a full O(N) permutation
+#   cost per checkpoint via jax_dataloader's shuffle=True DataLoader,
+#   regardless of the early break after max_eval_batches (see
+#   sampling_pct_pos_codes_sweep_profile.sh and train_one_run's docstring for
+#   the full story). Fixed by drawing periodic eval subsamples via plain numpy
+#   indexing instead. Directly confirmed the fix eliminates the ~550-650s/run
+#   of wasted permutation work (local timing: ~2,578ms/call x 199 checkpoints
+#   = ~513s old vs. ~67ms total new, at the real 2,793,888-row scale) -- but
+#   this was NOT yet re-measured on the actual cluster with the fix applied.
+#   Rough bound from the profile's two train_frac=1.0 runs (no test set, so
+#   already unaffected by the bug): ~100-200s/run for pure training, which is
+#   the best available proxy for fixed-code per-run cost until re-profiled.
+#   Memory is a separate question the eval fix does NOT obviously address --
+#   JAX's CPU allocator typically doesn't return freed memory to the OS within
+#   a process, so 24.18GB may reflect accumulated allocations across the
+#   profiling run's 20 sequential training runs rather than any single run's
+#   real peak; do not assume it drops just because time did.
 #
-#   Memory: positional_codes=True combos (2-5) transiently peak around ~15.5GB
-#   at the 90% linear-schedule percentage (numpy fancy-indexing nearly doubles
-#   the resident ~7.5GB population array there -- see
-#   run_sampling_pct_sweep_for_combo's docstring); combos 0-1 (no pos codes)
-#   peak around ~7.8GB. --mem below is sized for the worst case + margin; a
-#   single array submission shares one --mem across every task, so combos 0-1
-#   will be over-provisioned -- fine on a scheduler that only queues by
-#   core/mem availability (as here); reconsider if your cluster's fair-share
-#   instead penalizes requested (not used) memory.
+#   --time and --mem below are therefore placeholders pending a fresh profile
+#   run with the fix -- generous multiples of the rough bounds above, not a
+#   real measurement. RE-RUN THE PROFILER before submitting this array job.
 #
 #   Disk: each run writes one JSON with a full 300,000-step history (~18MB
 #   uncompressed with indent=2, roughly constant size regardless of
@@ -63,8 +67,8 @@
 #SBATCH --job-name=sampling_pct_pos_codes_sweep
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2            # SET AFTER PROFILING -- tiny per-step compute (L=8, batch=64), unlikely to benefit from more cores
-#SBATCH --mem=24G                    # SET AFTER PROFILING -- local worst-case estimate ~15.5GB transient peak + margin
-#SBATCH --time=04:00:00              # SET AFTER PROFILING -- local worst-case estimate ~2.82h + margin
+#SBATCH --mem=32G                    # SET AFTER PROFILING -- pre-fix profile measured 24.18GB peak (eval fix doesn't obviously change memory) + margin; RE-PROFILE, don't trust this
+#SBATCH --time=18:00:00              # SET AFTER PROFILING -- rough bound from pre-fix profile's unaffected (no-test-set) runs, ~200s/run x 200 runs/combo + generous margin; RE-PROFILE, don't trust this
 #SBATCH --output=slurm/logs/sampling_pct_pos_codes_sweep_%A_%a.out
 
 N_SEEDS=10   # fixed sweep design

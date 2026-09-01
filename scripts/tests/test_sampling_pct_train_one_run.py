@@ -28,13 +28,13 @@ def build_loaders(L, positional_codes, label_mode, seed, train_frac, batch_size)
         batch_size=batch_size, shuffle=True, drop_last=True,
         generator=random.PRNGKey(seed),
     )
+    # ds_test is plain arrays, not a DataLoader -- see train_one_run's docstring
+    # for why (jdl's shuffle=True DataLoader pays a full O(N) permutation cost
+    # per __iter__ call regardless of an early break, which defeated eval
+    # capping when profiled on the cluster).
     ds_test = None
     if test_idx.size > 0:
-        ds_test = jdl.DataLoader(
-            jdl.ArrayDataset(X[test_idx], y[test_idx]), "jax",
-            batch_size=batch_size, shuffle=True, drop_last=True,
-            generator=random.PRNGKey(seed),
-        )
+        ds_test = (X[test_idx], y[test_idx])
     return ds_train, ds_test, test_idx.size // batch_size
 
 
@@ -62,6 +62,7 @@ def main():
                 ds_test=ds_test,
                 in_dim=in_dim,
                 L=L,
+                batch_size=batch_size,
                 num_steps=num_steps,
                 eval_every=eval_every,
                 max_eval_batches=max_eval_batches,

@@ -28,6 +28,25 @@
 # slurm/sampling_pct_pos_codes_sweep.sh. Do NOT submit the real array job
 # using only the local estimate below.
 #
+# FIRST PROFILE (job 5990989, 2026-09-01): 3:46:35 wall clock, 24.18GB peak
+# RSS -- caught a real bug: capped periodic eval was routed through a
+# jdl.DataLoader(shuffle=True) and broken out of early, but jax_dataloader's
+# __iter__ generates a full permutation of the ENTIRE test array (2,793,888
+# rows) on every fresh iteration regardless of the early break, so the cap did
+# nothing to cap the actual cost. Confirmed directly: the two train_frac=1.0
+# runs in that profile (no test set, zero eval calls) finished in ~100-200s,
+# vs. ~755s for every other run -- ~550-650s/run of pure waste, matching a
+# direct local timing of the culprit call (~2,578ms per full-array permutation
+# x 199 checkpoints = ~513s). Fixed in sampling_pct_pos_codes_sweep.py:
+# periodic eval now draws a subsample via plain numpy indexing (~0.3ms even at
+# this scale) instead of a DataLoader permutation. This job's fix should fix
+# wall-clock time dramatically; memory is a separate question (JAX's CPU
+# allocator typically doesn't return freed memory to the OS within a process,
+# so the 24GB figure may reflect accumulated allocations across the profiling
+# run's 20 sequential training runs rather than any single run's real peak) --
+# RE-RUN THIS PROFILER after the fix and use its fresh numbers, don't assume
+# memory shrinks just because time did.
+#
 # Submit:
 #   sbatch slurm/sampling_pct_pos_codes_sweep_profile.sh
 # ============================================================

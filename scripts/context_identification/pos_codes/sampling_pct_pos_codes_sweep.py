@@ -146,6 +146,7 @@ def train_one_run(
     ds_test,
     in_dim,
     L,
+    batch_size,
     num_steps,
     eval_every,
     max_eval_batches=200,
@@ -167,24 +168,39 @@ def train_one_run(
     loss/acc is recorded every `eval_every` steps, but the test set stays a fixed
     ~20% of the *full* population regardless of train_frac (see
     train_test_split_indices) -- for small train_frac this can be orders of
-    magnitude larger than the training set, so evaluating it in full at every
-    checkpoint is far more expensive than training itself (profiled: ~104 hours
-    vs. ~12 hours of total compute across the sweep). So periodic checkpoints
-    instead evaluate only the first `max_eval_batches` batches of a freshly
-    reshuffled ds_test (ds_test must be built with shuffle=True) -- a random
-    subsample, different each checkpoint. Only the final step (step == num_steps)
-    evaluates the complete ds_test, for one authoritative full-population metric
-    per run. If ds_test is None (train_frac == 1.0, no held-out data), test
+    magnitude larger than the training set. Periodic checkpoints evaluate only a
+    random subsample of `max_eval_batches` batches, drawn directly via numpy
+    indexing (np.random.Generator.choice, ~0.3ms even at ~2.8M rows -- genuinely
+    O(k), not O(N)); only the final step (step == num_steps) evaluates the
+    complete ds_test in order, for one authoritative full-population metric per
+    run. If ds_test is None (train_frac == 1.0, no held-out data), test
     evaluation is skipped entirely.
+
+    IMPORTANT: ds_test is plain (X_test, y_test) arrays, NOT a jax_dataloader
+    DataLoader -- profiling on the cluster caught a real bug in an earlier
+    version that routed capped eval through a shuffle=True DataLoader and broke
+    out early after max_eval_batches: jax_dataloader's DataLoaderJAX.__iter__
+    (loaders/jax.py) calls jrand.permutation() on the ENTIRE index array on
+    every fresh iteration, regardless of how many batches are consumed before
+    the early break -- so "capping" the batch count did nothing to cap the
+    actual cost, which stayed O(N) per checkpoint. Confirmed via the profiler:
+    runs with a test set took ~755s each (199 checkpoints x ~3s/full-array
+    permutation), while the two train_frac=1.0 runs (no test set, zero eval
+    calls) took only ~100-200s -- the gap was pure wasted permutation work, not
+    training or legitimate eval cost. Do not reintroduce a DataLoader for
+    periodic eval; if ds_train's cycling behavior is ever changed, keep this
+    reasoning in mind.
 
     Args:
         key_init: JAX PRNG key.
         condition: 'adaptive', 'adaptive_pos', or 'attn_pos'.
         label_mode: 'feature' or 'position'.
         ds_train: training DataLoader (shuffle=True).
-        ds_test: held-out DataLoader (shuffle=True), or None to skip evaluation.
+        ds_test: (X_test, y_test) arrays, or None to skip evaluation.
         in_dim: input dimension (L without pos codes, 2*L with).
         L: feature vector length (= number of classes).
+        batch_size: evaluation batch size (training batch size is implicit in
+            ds_train; this must match it for eval_step's jit to reuse cache).
         num_steps: total mini-batch training steps.
         eval_every: evaluate ds_test every this many steps (plus the final step).
         max_eval_batches: cap on batches evaluated at non-final checkpoints
@@ -230,25 +246,41 @@ def train_one_run(
         "test_step": [], "test_loss": [], "test_acc": [], "test_n_batches": [],
     }
 
+    X_test, y_test = ds_test if ds_test is not None else (None, None)
+    n_test = X_test.shape[0] if X_test is not None else 0
+    # Seeded from key_init so periodic subsamples are reproducible per run but
+    # differ across checkpoints (advances each run_eval call) and across seeds.
+    eval_rng = np.random.default_rng(int(jax.random.randint(key_init, (), 0, 2**31 - 1)))
+
     def run_eval(step, max_batches):
         if ds_test is None:
             return
+        if max_batches is None:
+            # Final step: complete, unshuffled pass -- order doesn't matter for
+            # an aggregate metric, so no permutation cost at all.
+            idx = np.arange(n_test)
+        else:
+            k = min(max_batches * batch_size, n_test)
+            idx = eval_rng.choice(n_test, size=k, replace=False)
+
+        n_complete = len(idx) - len(idx) % batch_size
+        idx = idx[:n_complete]
+
         test_losses, test_accs = [], []
-        n_batches = 0
-        for X, y in ds_test:
-            if max_batches is not None and n_batches >= max_batches:
-                break
+        for i in range(0, n_complete, batch_size):
+            batch_idx = idx[i:i + batch_size]
+            Xb, yb = X_test[batch_idx], y_test[batch_idx]
             if is_adaptive:
-                loss, acc = eval_step(params_attn, X, y, gamma_param)
+                loss, acc = eval_step(params_attn, Xb, yb, gamma_param)
             else:
-                loss, acc = eval_step(params_attn, X, y)
+                loss, acc = eval_step(params_attn, Xb, yb)
             test_losses.append(loss)
             test_accs.append(acc)
-            n_batches += 1
+
         history["test_step"].append(step)
         history["test_loss"].append(float(jnp.mean(jnp.stack(test_losses))))
         history["test_acc"].append(float(jnp.mean(jnp.stack(test_accs))))
-        history["test_n_batches"].append(n_batches)
+        history["test_n_batches"].append(n_complete // batch_size)
 
     pbar = None
     if show_progress:
@@ -419,14 +451,14 @@ def run_sampling_pct_sweep_for_combo(
                     generator=loader_key,
                 )
 
+                # Plain arrays, not a DataLoader -- train_one_run draws its own
+                # cheap numpy subsamples for periodic eval (see its docstring
+                # for why routing this through jdl's shuffle=True DataLoader
+                # was a real bug: full O(N) permutation cost per checkpoint,
+                # regardless of an early break after max_eval_batches).
                 ds_test = None
                 if test_idx.size > 0:
-                    X_test, y_test = X[test_idx], y[test_idx]
-                    ds_test = jdl.DataLoader(
-                        jdl.ArrayDataset(X_test, y_test), "jax",
-                        batch_size=batch_size, shuffle=True, drop_last=True,
-                        generator=loader_key,
-                    )
+                    ds_test = (X[test_idx], y[test_idx])
 
                 key_init = random.fold_in(
                     random.PRNGKey(seed),
@@ -441,6 +473,7 @@ def run_sampling_pct_sweep_for_combo(
                     ds_test=ds_test,
                     in_dim=in_dim,
                     L=L,
+                    batch_size=batch_size,
                     num_steps=num_steps,
                     eval_every=eval_every,
                     max_eval_batches=max_eval_batches,
