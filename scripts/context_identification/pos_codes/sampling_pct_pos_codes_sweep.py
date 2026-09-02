@@ -530,7 +530,15 @@ def build_arg_parser():
              "all 6 combos run sequentially in-process (local smoke-test use "
              "only -- do not use this for the full HPC sweep).",
     )
-    p.add_argument("--n-seeds", type=int, default=10)
+    p.add_argument("--n-seeds", type=int, default=10,
+                    help="Run seeds range(n_seeds) sequentially in-process. Ignored if --seed "
+                         "is given. Local smoke-test / all-seeds-in-one-process use only -- "
+                         "the HPC array job uses --seed instead, to parallelize seeds across "
+                         "array tasks.")
+    p.add_argument("--seed", type=int, default=None,
+                    help="Run only this single seed (not range(n_seeds)). Typically derived "
+                         "from $SLURM_ARRAY_TASK_ID so each array task covers one "
+                         "(combo, seed) pair -- see slurm/sampling_pct_pos_codes_sweep.sh.")
     p.add_argument("--L", type=int, default=8)
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--num-steps", type=int, default=300_000)
@@ -557,6 +565,7 @@ if __name__ == "__main__":
     combo_indices = (
         [args.combo_idx] if args.combo_idx is not None else list(range(len(CONDITION_LABEL_MODE_COMBOS)))
     )
+    seeds = (args.seed,) if args.seed is not None else tuple(range(args.n_seeds))
 
     data_dir = Path(args.data_dir)
     for idx in combo_indices:
@@ -566,7 +575,7 @@ if __name__ == "__main__":
         run_sampling_pct_sweep_for_combo(
             condition=condition,
             label_mode=label_mode,
-            seeds=tuple(range(args.n_seeds)),
+            seeds=seeds,
             schedules=schedules,
             L=args.L,
             batch_size=args.batch_size,

@@ -39,13 +39,20 @@
 # direct local timing of the culprit call (~2,578ms per full-array permutation
 # x 199 checkpoints = ~513s). Fixed in sampling_pct_pos_codes_sweep.py:
 # periodic eval now draws a subsample via plain numpy indexing (~0.3ms even at
-# this scale) instead of a DataLoader permutation. This job's fix should fix
-# wall-clock time dramatically; memory is a separate question (JAX's CPU
-# allocator typically doesn't return freed memory to the OS within a process,
-# so the 24GB figure may reflect accumulated allocations across the profiling
-# run's 20 sequential training runs rather than any single run's real peak) --
-# RE-RUN THIS PROFILER after the fix and use its fresh numbers, don't assume
-# memory shrinks just because time did.
+# this scale) instead of a DataLoader permutation.
+#
+# SECOND PROFILE (job 5995808, 2026-09-01, post-fix): 34:24.66 wall clock
+# (down from 3:46:35, confirming the fix), 24,194,680 KB (~23.1GiB) peak RSS
+# -- essentially unchanged from the pre-fix run, as expected: the eval fix
+# addressed wasted CPU time, not memory (peak RSS is driven by the resident
+# population array + per-run indexing copies, independent of the eval bug).
+#
+# Profiling is DONE -- these numbers are used directly in
+# slurm/sampling_pct_pos_codes_sweep.sh's #SBATCH --time/--mem (with margin).
+# The real array job additionally splits work across seeds too (60 tasks =
+# 6 combos x 10 seeds, not 6), so each of its array tasks does exactly the
+# same amount of work profiled here (--seed 0 below is equivalent to one such
+# task) -- no need to re-profile for that change.
 #
 # Submit:
 #   sbatch slurm/sampling_pct_pos_codes_sweep_profile.sh
@@ -63,5 +70,5 @@ cd "$HOME/adaptive-bottleneck"   # FILL IN: adjust if the repo lives elsewhere o
 source /usr/people/km3199/.local/bin/env
 
 /usr/bin/time -v uv run python scripts/context_identification/pos_codes/sampling_pct_pos_codes_sweep.py \
-    --combo-idx 2 --n-seeds 1 \
+    --combo-idx 2 --seed 0 \
     --data-dir ./data/_profile_sampling_pct_pos_codes_sweep
