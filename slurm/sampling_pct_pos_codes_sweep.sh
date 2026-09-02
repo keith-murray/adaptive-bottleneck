@@ -72,7 +72,7 @@
 #SBATCH --job-name=sampling_pct_pos_codes_sweep
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2            # profile measured 129% CPU utilization -- not CPU-parallel, 2 cores is already generous
-#SBATCH --mem=24G                    # profile (job 5995808, post-fix) measured 24,194,680 KB (~23.1GiB) peak -- ~1.4x margin
+#SBATCH --mem=24G                    # profile (job 5995808, post-fix) measured 24,194,680 KB (~23.1GiB) peak -- ~4% margin (kept tight deliberately; bump if array tasks start OOM-killing)
 #SBATCH --time=01:00:00              # profile (job 5995808, post-fix) measured 34:24.66 wall clock -- ~1.75x margin
 #SBATCH --output=slurm/logs/sampling_pct_pos_codes_sweep_%A_%a.out
 
