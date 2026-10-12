@@ -212,10 +212,10 @@ __marimo__/
 *.fdb_latexmk
 *.fls
 *.synctex.gz
-*.bbl 
-*blg 
-*.out 
+*.bbl
+*.blg
+*.out
 *.xwm
 data/
-.claude 
+.claude
 logs/

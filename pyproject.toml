@@ -1,8 +1,9 @@
 [project]
 name = "adaptive-bottleneck"
 version = "0.1.0"
-description = "Add your description here"
+description = "Adaptive relational cross attention (ARCA): a learnable interpolation between cross attention and the relational bottleneck"
 readme = "README.md"
+license = { file = "LICENSE" }
 authors = [
     { name = "Keith T. Murray", email = "murraykeith64@gmail.com" }
 ]
@@ -17,9 +18,6 @@ dependencies = [
     "seaborn>=0.13.2",
     "tqdm>=4.67.1",
 ]
-
-[project.scripts]
-adaptive-bottleneck = "adaptive_bottleneck:main"
 
 [build-system]
 requires = ["hatchling"]

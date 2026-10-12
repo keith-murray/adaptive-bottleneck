@@ -65,14 +65,13 @@ def gamma_value_self_attention_forward(params, X, gamma, linear=False):
 
 
 # Cross attention
-def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linear=False, signed=False):
+def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linear=False):
     """
     Cross-attention with gamma-interpolated values:
 
         Q = X_query   @ W_q
         K = X_context @ W_k
-        V = ((1-gamma) * X_context + gamma * I) @ W_v       (signed=False)
-        V = ((1-gamma) * X_context - gamma * I) @ W_v       (signed=True)
+        V = ((1-gamma) * X_context + gamma * I) @ W_v
 
     Args:
         params: dict with keys {"W_q", "W_k", "W_v"}
@@ -83,7 +82,6 @@ def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linea
         X_query:   (B, L_q, D_in)
         gamma: scalar in [0, 1]
         linear (bool): If True, skip softmax and use raw scores as attention weights.
-        signed (bool): If True, use subtraction for identity term to separate feature/position info.
 
     Returns:
         out: (B, L_q, D_val)
@@ -100,8 +98,7 @@ def gamma_value_cross_attention_forward(params, X_context, X_query, gamma, linea
     I_ctx = jnp.broadcast_to(jnp.eye(L_c, D_in, dtype=X_context.dtype)[None, :, :], (B, L_c, D_in))
 
     # Gamma-interpolated values input
-    sign = -1.0 if signed else 1.0
-    X_tilde = (1.0 - gamma) * X_context + sign * gamma * I_ctx  # (B, L_c, D_in)
+    X_tilde = (1.0 - gamma) * X_context + gamma * I_ctx  # (B, L_c, D_in)
     V = X_tilde @ params["W_v"]                                  # (B, L_c, D_val)
 
     # Attention weights over CONTEXT positions for each QUERY position
@@ -153,82 +150,3 @@ def forward_multinomial_logits(params_attn, params_clf, X, gamma, linear=False):
     bias = jnp.broadcast_to(params_clf["b_out"][None,:], (out_flat.shape[0],bias_shape,))  # (B,)
     logits = (out_flat @ params_clf["W_out"]).squeeze(-1) + bias
     return logits, attn_w
-
-
-# Dual decoder for partially-relational tasks
-def init_dual_decoder_params(key, val_dim, num_classes, use_bias=True, scale=0.02):
-    """Initialize parameters for dual feature/position decoders.
-
-    Args:
-        key: JAX PRNGKey.
-        val_dim: Dimension of the attention output (d).
-        num_classes: Number of output classes for each decoder.
-        use_bias: If True, include bias terms in the decoders.
-        scale: Initialization scale.
-
-    Returns:
-        dict with keys {"W_f", "W_p"} and optionally {"b_f", "b_p"}
-            W_f: (val_dim, num_classes) - feature decoder weights
-            W_p: (val_dim, num_classes) - position decoder weights
-            b_f: (num_classes,) - feature decoder bias (if use_bias=True)
-            b_p: (num_classes,) - position decoder bias (if use_bias=True)
-    """
-    k1, k2 = random.split(key, 2)
-
-    params = {
-        "W_f": scale * random.normal(k1, (val_dim, num_classes)),
-        "W_p": scale * random.normal(k2, (val_dim, num_classes)),
-    }
-
-    if use_bias:
-        params["b_f"] = jnp.zeros((num_classes,))
-        params["b_p"] = jnp.zeros((num_classes,))
-
-    return params
-
-
-def dual_decoder_cross_attention_forward(params_attn, params_dec, X_context, X_query, gamma, linear=False, signed=False):
-    """Cross-attention with dual decoders for feature and position prediction.
-
-    Computes:
-        Z = cross_attention(X_query, X_context, gamma)  # (B, 1, d)
-        logits_f = Z @ W_f [+ b_f]  # feature logits
-        logits_p = Z @ W_p [+ b_p]  # position logits
-
-    Args:
-        params_attn: dict with attention params {"W_q", "W_k", "W_v"}
-        params_dec: dict with decoder params {"W_f", "W_p"} and optionally {"b_f", "b_p"}
-        X_context: (B, L_c, D_in) context vectors
-        X_query: (B, 1, D_in) query vector (reference)
-        gamma: scalar in [0, 1]
-        linear: If True, use linear attention (no softmax)
-        signed: If True, use signed interpolation ((1-γ)X - γI) to separate feature/position info
-
-    Returns:
-        logits_f: (B, num_classes) feature logits
-        logits_p: (B, num_classes) position logits
-        attn_weights: (B, 1, L_c) attention weights
-    """
-    # Cross-attention output
-    out, attn_w = gamma_value_cross_attention_forward(
-        params_attn,
-        X_context,
-        X_query,
-        gamma=gamma,
-        linear=linear,
-        signed=signed,
-    )  # out: (B, 1, val_dim)
-
-    # Squeeze the query dimension: (B, 1, val_dim) -> (B, val_dim)
-    Z = out[:, 0, :]
-
-    # Dual decoders
-    logits_f = Z @ params_dec["W_f"]
-    logits_p = Z @ params_dec["W_p"]
-
-    if "b_f" in params_dec:
-        logits_f = logits_f + params_dec["b_f"]
-    if "b_p" in params_dec:
-        logits_p = logits_p + params_dec["b_p"]
-
-    return logits_f, logits_p, attn_w

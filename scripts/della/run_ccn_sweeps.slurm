@@ -48,8 +48,8 @@ fi
 mkdir -p "$REPO_ROOT/logs"
 
 # These scripts save/load with paths relative to CWD (e.g. "./data/...", not
-# relative to the script file) -- each task MUST cd into its own script
-# directory before running, or it'll read/write the wrong data/ folder.
+# relative to the script file) -- each task MUST run from the repo root so
+# results land in the top-level data/ folder.
 SCRIPT_DIRS=(
     "scripts/context_identification/fixed_gamma"
     "scripts/context_identification/online_gamma"
@@ -65,6 +65,6 @@ TASK_DIR="${SCRIPT_DIRS[$SLURM_ARRAY_TASK_ID]}"
 TASK_SCRIPT="${SCRIPTS[$SLURM_ARRAY_TASK_ID]}"
 
 echo "[task $SLURM_ARRAY_TASK_ID] $(date): running $TASK_SCRIPT in $TASK_DIR"
-cd "$REPO_ROOT/$TASK_DIR"
-python "$TASK_SCRIPT"
+cd "$REPO_ROOT"
+python "$TASK_DIR/$TASK_SCRIPT"
 echo "[task $SLURM_ARRAY_TASK_ID] $(date): done"

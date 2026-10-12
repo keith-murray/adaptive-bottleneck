@@ -1,10 +1,9 @@
-"""Learnable gamma sweep for ContextIdentification across all label modes.
+"""Learnable gamma sweep for ContextIdentification across both label modes.
 
 This script implements learnable gamma (via backpropagation) for the ContextIdentification
-task across three label modes:
+task across two label modes:
 - 'feature': predict which feature is closest
 - 'position': predict which position contains the closest item
-- 'both': predict both feature and position (dual decoder)
 
 Gamma is initialized at different values and optimized during training.
 """
@@ -20,9 +19,7 @@ from tqdm import tqdm
 
 from adaptive_bottleneck.models import (
     init_gamma_value_attn_params,
-    init_dual_decoder_params,
     gamma_value_cross_attention_forward,
-    dual_decoder_cross_attention_forward,
 )
 from adaptive_bottleneck.tasks import ContextIdentification
 from adaptive_bottleneck.save import save_results_json, _save_params_pkl, _ensure_dir
@@ -40,7 +37,7 @@ def acc_from_logits(logits, y):
 
 
 # ============================================================
-# Single decoder forward (feature or position mode)
+# Forward pass
 # ============================================================
 
 def forward_single_logits(params_attn, X, gamma):
@@ -71,46 +68,11 @@ def forward_single_logits(params_attn, X, gamma):
 
 
 # ============================================================
-# Dual decoder forward (both mode)
-# ============================================================
-
-def forward_dual_logits(params_attn, params_dec, X, gamma, signed):
-    """Forward pass for dual-output mode (both).
-
-    Args:
-        params_attn: attention parameters
-        params_dec: dual decoder parameters
-        X: (B, L+1, L) input
-        gamma: scalar or array
-        signed: bool, whether to use signed interpolation
-
-    Returns:
-        logits_f: (B, L) feature logits
-        logits_p: (B, L) position logits
-        attn_w: (B, 1, L) attention weights
-    """
-    X_q = X[:, 0:1, :]  # (B, 1, L)
-    X_c = X[:, 1:, :]   # (B, L, L)
-
-    logits_f, logits_p, attn_w = dual_decoder_cross_attention_forward(
-        params_attn,
-        params_dec,
-        X_c,
-        X_q,
-        gamma=gamma,
-        linear=False,  # softmax only
-        signed=signed,
-    )
-
-    return logits_f, logits_p, attn_w
-
-
-# ============================================================
-# Training steps for single decoder
+# Training steps
 # ============================================================
 
 def make_train_step_single(optimizer, gamma_optimizer):
-    """Create training step for single-decoder modes."""
+    """Create training step for feature or position mode."""
     @jax.jit
     def train_step(params_attn, gamma, opt_state, gamma_opt_state, X, y):
         def loss_fn(p_attn, g):
@@ -139,72 +101,13 @@ def make_train_step_single(optimizer, gamma_optimizer):
 
 
 def make_eval_step_single():
-    """Create eval step for single-decoder modes."""
+    """Create eval step for feature or position mode."""
     @jax.jit
     def eval_step(params_attn, X, y, gamma):
         logits, _ = forward_single_logits(params_attn, X, gamma=gamma)
         loss = ce_with_logits(logits, y)
         acc = acc_from_logits(logits, y)
         return loss, acc
-
-    return eval_step
-
-
-# ============================================================
-# Training steps for dual decoder
-# ============================================================
-
-def make_train_step_dual(optimizer, gamma_optimizer, signed):
-    """Create training step for dual-decoder mode."""
-    @jax.jit
-    def train_step(params, gamma, opt_state, gamma_opt_state, X, y_f, y_p):
-        params_attn, params_dec = params["attn"], params["dec"]
-
-        def loss_fn(p_attn, p_dec, g):
-            logits_f, logits_p, _ = forward_dual_logits(p_attn, p_dec, X, gamma=g, signed=signed)
-            loss_f = ce_with_logits(logits_f, y_f)
-            loss_p = ce_with_logits(logits_p, y_p)
-            return loss_f + loss_p
-
-        # Compute gradients
-        loss, (grads_attn, grads_dec, grads_gamma) = jax.value_and_grad(
-            loss_fn, argnums=(0, 1, 2)
-        )(params_attn, params_dec, gamma)
-
-        # Update params
-        grads = {"attn": grads_attn, "dec": grads_dec}
-        updates, opt_state = optimizer.update(grads, opt_state, params)
-        params = optax.apply_updates(params, updates)
-
-        # Update gamma
-        gamma_updates, gamma_opt_state = gamma_optimizer.update(grads_gamma, gamma_opt_state, gamma)
-        gamma = optax.apply_updates(gamma, gamma_updates)
-        gamma = jnp.clip(gamma, 0.0, 1.0)
-
-        # Compute metrics
-        logits_f, logits_p, _ = forward_dual_logits(
-            params["attn"], params["dec"], X, gamma=gamma, signed=signed
-        )
-        acc_f = acc_from_logits(logits_f, y_f)
-        acc_p = acc_from_logits(logits_p, y_p)
-
-        return params, gamma, opt_state, gamma_opt_state, loss, acc_f, acc_p
-
-    return train_step
-
-
-def make_eval_step_dual(signed):
-    """Create eval step for dual-decoder mode."""
-    @jax.jit
-    def eval_step(params, X, y_f, y_p, gamma):
-        logits_f, logits_p, _ = forward_dual_logits(
-            params["attn"], params["dec"], X, gamma=gamma, signed=signed
-        )
-        loss_f = ce_with_logits(logits_f, y_f)
-        loss_p = ce_with_logits(logits_p, y_p)
-        acc_f = acc_from_logits(logits_f, y_f)
-        acc_p = acc_from_logits(logits_p, y_p)
-        return loss_f + loss_p, acc_f, acc_p
 
     return eval_step
 
@@ -225,7 +128,6 @@ def train_one_run(
     lr,
     weight_decay,
     gamma_lr,
-    signed=False,
     show_progress=True,
 ):
     """Train with learnable gamma for one run.
@@ -233,7 +135,7 @@ def train_one_run(
     Args:
         key_init: JAX PRNG key
         init_gamma: initial value for gamma
-        label_mode: 'feature', 'position', or 'both'
+        label_mode: 'feature' or 'position'
         ds_train: training dataset
         ds_test: test dataset
         L: dimension (vector length)
@@ -241,23 +143,14 @@ def train_one_run(
         lr: learning rate for model parameters
         weight_decay: weight decay for model parameters
         gamma_lr: learning rate for gamma
-        signed: whether to use signed interpolation (for 'both' mode)
         show_progress: whether to show progress bar
 
     Returns:
         history: dict with train/test metrics and gamma evolution
         params: trained parameters
     """
-    is_dual = (label_mode == "both")
-
     # Initialize parameters
-    if is_dual:
-        k1, k2 = random.split(key_init, 2)
-        params_attn = init_gamma_value_attn_params(k1, in_dim=L, attn_dim=L, val_dim=L)
-        params_dec = init_dual_decoder_params(k2, val_dim=L, num_classes=L, use_bias=True)
-        params = {"attn": params_attn, "dec": params_dec}
-    else:
-        params = init_gamma_value_attn_params(key_init, in_dim=L, attn_dim=L, val_dim=L)
+    params = init_gamma_value_attn_params(key_init, in_dim=L, attn_dim=L, val_dim=L)
 
     # Initialize gamma
     gamma_param = jnp.array(init_gamma, dtype=jnp.float32)
@@ -270,26 +163,15 @@ def train_one_run(
     gamma_opt_state = gamma_optimizer.init(gamma_param)
 
     # Training/eval steps
-    if is_dual:
-        train_step = make_train_step_dual(optimizer, gamma_optimizer, signed=signed)
-        eval_step = make_eval_step_dual(signed=signed)
-    else:
-        train_step = make_train_step_single(optimizer, gamma_optimizer)
-        eval_step = make_eval_step_single()
+    train_step = make_train_step_single(optimizer, gamma_optimizer)
+    eval_step = make_eval_step_single()
 
     # History tracking
-    if is_dual:
-        history = {
-            "train_loss": [], "train_acc_f": [], "train_acc_p": [],
-            "test_loss": [], "test_acc_f": [], "test_acc_p": [],
-            "gamma": []
-        }
-    else:
-        history = {
-            "train_loss": [], "train_acc": [],
-            "test_loss": [], "test_acc": [],
-            "gamma": []
-        }
+    history = {
+        "train_loss": [], "train_acc": [],
+        "test_loss": [], "test_acc": [],
+        "gamma": []
+    }
 
     # Progress bar
     epoch_iter = range(epochs)
@@ -302,79 +184,38 @@ def train_one_run(
     # Training loop
     for _epoch in epoch_iter:
         # Training epoch
-        if is_dual:
-            train_losses, train_accs_f, train_accs_p = [], [], []
-            for X, y_f, y_p in ds_train:
-                params, gamma_param, opt_state, gamma_opt_state, loss, acc_f, acc_p = train_step(
-                    params, gamma_param, opt_state, gamma_opt_state, X, y_f, y_p
-                )
-                train_losses.append(loss)
-                train_accs_f.append(acc_f)
-                train_accs_p.append(acc_p)
+        train_losses, train_accs = [], []
+        for X, y in ds_train:
+            params, gamma_param, opt_state, gamma_opt_state, loss, acc = train_step(
+                params, gamma_param, opt_state, gamma_opt_state, X, y
+            )
+            train_losses.append(loss)
+            train_accs.append(acc)
 
-            tr_loss = float(jnp.mean(jnp.stack(train_losses)))
-            tr_acc_f = float(jnp.mean(jnp.stack(train_accs_f)))
-            tr_acc_p = float(jnp.mean(jnp.stack(train_accs_p)))
+        tr_loss = float(jnp.mean(jnp.stack(train_losses)))
+        tr_acc = float(jnp.mean(jnp.stack(train_accs)))
 
-            # Test epoch
-            test_losses, test_accs_f, test_accs_p = [], [], []
-            for X, y_f, y_p in ds_test:
-                loss, acc_f, acc_p = eval_step(params, X, y_f, y_p, gamma_param)
-                test_losses.append(loss)
-                test_accs_f.append(acc_f)
-                test_accs_p.append(acc_p)
+        # Test epoch
+        test_losses, test_accs = [], []
+        for X, y in ds_test:
+            loss, acc = eval_step(params, X, y, gamma_param)
+            test_losses.append(loss)
+            test_accs.append(acc)
 
-            te_loss = float(jnp.mean(jnp.stack(test_losses)))
-            te_acc_f = float(jnp.mean(jnp.stack(test_accs_f)))
-            te_acc_p = float(jnp.mean(jnp.stack(test_accs_p)))
+        te_loss = float(jnp.mean(jnp.stack(test_losses)))
+        te_acc = float(jnp.mean(jnp.stack(test_accs)))
 
-            history["train_loss"].append(tr_loss)
-            history["train_acc_f"].append(tr_acc_f)
-            history["train_acc_p"].append(tr_acc_p)
-            history["test_loss"].append(te_loss)
-            history["test_acc_f"].append(te_acc_f)
-            history["test_acc_p"].append(te_acc_p)
+        history["train_loss"].append(tr_loss)
+        history["train_acc"].append(tr_acc)
+        history["test_loss"].append(te_loss)
+        history["test_acc"].append(te_acc)
 
-            if pbar is not None:
-                pbar.set_postfix({
-                    "loss": f"{tr_loss:.3f}",
-                    "f": f"{tr_acc_f:.3f}",
-                    "p": f"{tr_acc_p:.3f}",
-                    "γ": f"{float(gamma_param):.3f}",
-                })
-        else:
-            train_losses, train_accs = [], []
-            for X, y in ds_train:
-                params, gamma_param, opt_state, gamma_opt_state, loss, acc = train_step(
-                    params, gamma_param, opt_state, gamma_opt_state, X, y
-                )
-                train_losses.append(loss)
-                train_accs.append(acc)
-
-            tr_loss = float(jnp.mean(jnp.stack(train_losses)))
-            tr_acc = float(jnp.mean(jnp.stack(train_accs)))
-
-            # Test epoch
-            test_losses, test_accs = [], []
-            for X, y in ds_test:
-                loss, acc = eval_step(params, X, y, gamma_param)
-                test_losses.append(loss)
-                test_accs.append(acc)
-
-            te_loss = float(jnp.mean(jnp.stack(test_losses)))
-            te_acc = float(jnp.mean(jnp.stack(test_accs)))
-
-            history["train_loss"].append(tr_loss)
-            history["train_acc"].append(tr_acc)
-            history["test_loss"].append(te_loss)
-            history["test_acc"].append(te_acc)
-
-            if pbar is not None:
-                pbar.set_postfix({
-                    "loss": f"{tr_loss:.3f}",
-                    "acc": f"{tr_acc:.3f}",
-                    "γ": f"{float(gamma_param):.3f}",
-                })
+        if pbar is not None:
+            pbar.set_postfix({
+                "loss": f"{tr_loss:.3f}",
+                "acc": f"{tr_acc:.3f}",
+                "γ": f"{float(gamma_param):.3f}",
+            })
 
         history["gamma"].append(float(gamma_param))
 
@@ -392,7 +233,7 @@ def run_sweep(
     *,
     seeds=(0, 1, 2, 3, 4),
     init_gammas=(0.0, 0.25, 0.5, 0.75, 1.0),
-    label_modes=("feature", "position", "both"),
+    label_modes=("feature", "position"),
     num_samples=2000,
     L=10,
     allow_ref_in_context=False,
@@ -401,18 +242,17 @@ def run_sweep(
     lr=1e-3,
     weight_decay=1e-4,
     gamma_lr=1e-3,
-    signed=True,
     show_progress=False,
     show_combo_progress=True,
     models_dir=None,
     save_path=None,
 ):
-    """Run learnable gamma sweep across all label modes.
+    """Run learnable gamma sweep across both label modes.
 
     Args:
         seeds: random seeds for reproducibility
         init_gammas: initial values for gamma
-        label_modes: which label modes to run ('feature', 'position', 'both')
+        label_modes: which label modes to run ('feature', 'position')
         num_samples: number of samples per dataset
         L: vector dimension
         allow_ref_in_context: whether reference can appear in context
@@ -421,7 +261,6 @@ def run_sweep(
         lr: learning rate for model parameters
         weight_decay: weight decay for model parameters
         gamma_lr: learning rate for gamma
-        signed: whether to use signed interpolation (for 'both' mode)
         show_progress: show per-run progress bars
         show_combo_progress: show overall sweep progress
         models_dir: directory to save model parameters
@@ -485,7 +324,6 @@ def run_sweep(
                     lr=lr,
                     weight_decay=weight_decay,
                     gamma_lr=gamma_lr,
-                    signed=signed,
                     show_progress=show_progress,
                 )
 
@@ -494,8 +332,7 @@ def run_sweep(
                 # Save model
                 if models_dir is not None:
                     gamma_str = f"{init_gamma:.2f}".replace(".", "p")
-                    signed_str = "signed" if signed else "unsigned"
-                    run_name = f"learnable_gamma_{label_mode}_init{gamma_str}_{signed_str}_seed{seed}"
+                    run_name = f"learnable_gamma_{label_mode}_init{gamma_str}_seed{seed}"
                     params_path = models_dir / f"{run_name}_params.pkl"
                     _save_params_pkl(params, params_path)
 
@@ -524,7 +361,6 @@ if __name__ == "__main__":
         lr=1e-2,
         weight_decay=1e-3,
         gamma_lr=1e-2,
-        signed=True,
         show_progress=False,
         show_combo_progress=True,
         models_dir="./data/learnable_gamma_models/",

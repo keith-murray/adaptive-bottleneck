@@ -43,7 +43,7 @@
 
 cd "$HOME/adaptive-bottleneck"   # FILL IN: adjust if the repo lives elsewhere on the cluster
 
-source /usr/people/km3199/.local/bin/env
+source "$HOME/.local/bin/env"   # puts uv on PATH (default uv install location); adjust for your cluster
 
 N_DEVICES="$SLURM_CPUS_PER_TASK"   # must evenly divide --n-seeds below; keep in sync with --cpus-per-task above
 export XLA_FLAGS="--xla_force_host_platform_device_count=${N_DEVICES}"   # MUST be set before `uv run python` starts

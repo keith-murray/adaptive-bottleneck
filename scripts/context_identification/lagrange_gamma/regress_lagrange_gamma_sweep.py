@@ -38,7 +38,7 @@ The gradient at optimal γ follows analytically (no extra forward pass):
     ∇_W L(γ*) = -Q(γ*)_vec
               = -(α₀_vec + (ρ₀_vec - α₀_vec - α₁_vec)γ* + (α₁_vec - ρ₁_vec)γ*²)
 
-Label modes: 'feature' and 'position' only (no dual-decoder 'both' mode).
+Label modes: 'feature' and 'position'.
 """
 
 from pathlib import Path

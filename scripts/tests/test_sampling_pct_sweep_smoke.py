@@ -2,8 +2,8 @@
 schedules, writes to a scratch directory (not the repo's data/ dir)."""
 
 import json
-import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "context_identification" / "pos_codes"))
@@ -11,9 +11,7 @@ from sampling_pct_pos_codes_sweep import run_sampling_pct_sweep_for_combo, run_f
 
 
 def main():
-    data_dir = Path("/private/tmp/claude-501/-Users-ktmurray-Projects-adaptive-bottleneck/1d8f380a-c4ab-46cc-a174-c2335926e4a6/scratchpad/sampling_pct_smoke")
-    if data_dir.exists():
-        shutil.rmtree(data_dir)
+    data_dir = Path(tempfile.mkdtemp(prefix="sampling_pct_smoke_"))
 
     schedules = {"log": (0.01, 0.5, 1.0), "linear": (0.5, 1.0)}
     seeds = (0, 1)

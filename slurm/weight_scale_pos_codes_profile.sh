@@ -12,7 +12,7 @@
 # size directly in the .out file. If unavailable on your cluster, use
 # `seff $SLURM_JOB_ID` after the job completes instead.
 #
-# PROFILED 2026-08-20 (job 5672099, spockmk2): Wall-clock 00:15:52 (952s),
+# PROFILED 2026-08-20 (job 5672099): Wall-clock 00:15:52 (952s),
 # Memory Utilized 453.30 MB, 2 cores @ 75.26% CPU efficiency. See
 # slurm/weight_scale_pos_codes_sweep.sh header for the derived --time/--mem
 # for the real array job. Mem/time below kept generous in case this script
@@ -31,7 +31,7 @@
 
 cd "$HOME/adaptive-bottleneck"   # FILL IN: adjust if the repo lives elsewhere on the cluster
 
-source /usr/people/km3199/.local/bin/env
+source "$HOME/.local/bin/env"   # puts uv on PATH (default uv install location); adjust for your cluster
 
 /usr/bin/time -v uv run python scripts/context_identification/pos_codes/weight_scale_pos_codes_sweep.py \
     --scale-idx 0 --n-seeds 1 --conditions adaptive --label-modes feature \

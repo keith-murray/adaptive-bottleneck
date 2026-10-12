@@ -1,6 +1,6 @@
 """Plot results from the ContextIdentification positional-codes sweeps.
 
-Produces three figures saved to results/:
+Produces three figures saved to results/context_identification/pos_codes/:
   1. pos_codes_fixed_gamma_sweep.png    — fixed-γ test-accuracy curves (1×2 panels)
   2. pos_codes_learnable_gamma_sweep.png — learnable-γ accuracy + γ trajectory (2×2 panels)
   3. pos_codes_meta_gamma_sweep.png     — meta-γ accuracy + γ trajectory (2×2 panels)
@@ -51,7 +51,7 @@ def plot_mean_sem(ax, epochs, curves, color, label=None):
 
 def plot_fixed_gamma_sweep(
     results_path="./data/context_id_pos_codes_gamma_sweep.json",
-    save_path="./results/pos_codes_fixed_gamma_sweep.png",
+    save_path="./results/context_identification/pos_codes/pos_codes_fixed_gamma_sweep.png",
 ):
     results = load_json(results_path)
 
@@ -95,7 +95,7 @@ def plot_fixed_gamma_sweep(
 
 def plot_learnable_gamma_sweep(
     results_path="./data/context_id_pos_codes_learnable_gamma_sweep.json",
-    save_path="./results/pos_codes_learnable_gamma_sweep.png",
+    save_path="./results/context_identification/pos_codes/pos_codes_learnable_gamma_sweep.png",
 ):
     results = load_json(results_path)
 
@@ -148,7 +148,7 @@ def plot_learnable_gamma_sweep(
 
 def plot_meta_gamma_sweep(
     results_path="./data/context_id_pos_codes_meta_gamma_sweep.json",
-    save_path="./results/pos_codes_meta_gamma_sweep.png",
+    save_path="./results/context_identification/pos_codes/pos_codes_meta_gamma_sweep.png",
 ):
     results = load_json(results_path)
 
@@ -204,15 +204,15 @@ if __name__ == "__main__":
 
     plot_fixed_gamma_sweep(
         results_path="./data/context_id_pos_codes_gamma_sweep.json",
-        save_path="./results/pos_codes_fixed_gamma_sweep.png",
+        save_path="./results/context_identification/pos_codes/pos_codes_fixed_gamma_sweep.png",
     )
 
     plot_learnable_gamma_sweep(
         results_path="./data/context_id_pos_codes_learnable_gamma_sweep.json",
-        save_path="./results/pos_codes_learnable_gamma_sweep.png",
+        save_path="./results/context_identification/pos_codes/pos_codes_learnable_gamma_sweep.png",
     )
 
     plot_meta_gamma_sweep(
         results_path="./data/context_id_pos_codes_meta_gamma_sweep.json",
-        save_path="./results/pos_codes_meta_gamma_sweep.png",
+        save_path="./results/context_identification/pos_codes/pos_codes_meta_gamma_sweep.png",
     )

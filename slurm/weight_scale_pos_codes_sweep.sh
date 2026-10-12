@@ -20,7 +20,7 @@
 #   CONDITION_IDX = REM / 2             (0=adaptive, 1=adaptive_pos, 2=attn_pos)
 #   LABEL_MODE_IDX= REM % 2             (0=feature, 1=position)
 #
-# PROFILED 2026-08-20 (job 5672099, spockmk2): --scale-idx 0 --n-seeds 1
+# PROFILED 2026-08-20 (job 5672099): --scale-idx 0 --n-seeds 1
 # --conditions adaptive --label-modes feature (1 run, g=1e-8, 128,000
 # epochs) -> Job Wall-clock time 00:15:52 (952s), Memory Utilized 453.30 MB,
 # Cores per node 2 @ 75.26% CPU efficiency (~1.5 cores used).
@@ -68,7 +68,7 @@ LABEL_MODE=${LABEL_MODES[$(( REM % 2 ))]}
 
 cd "$HOME/adaptive-bottleneck"   # FILL IN: adjust if the repo lives elsewhere on the cluster
 
-source /usr/people/km3199/.local/bin/env
+source "$HOME/.local/bin/env"   # puts uv on PATH (default uv install location); adjust for your cluster
 
 uv run python scripts/context_identification/pos_codes/weight_scale_pos_codes_sweep.py \
     --scale-idx "$SCALE_IDX" \

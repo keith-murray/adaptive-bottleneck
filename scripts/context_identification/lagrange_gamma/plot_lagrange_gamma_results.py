@@ -1,6 +1,6 @@
 """Plot results from the closed-form optimal gamma sweep.
 
-Produces two figures saved to results/:
+Produces two figures saved to results/context_identification/lagrange_gamma/:
   1. closed_form_gamma_accuracy.png  — test-accuracy curves (1×3 panels)
   2. closed_form_gamma_trajectory.png — per-epoch mean gamma (1×3 panels)
 
@@ -47,7 +47,7 @@ def plot_mean_sem(ax, epochs, curves, color, label=None):
 
 def plot_accuracy(
     results_path="./data/closed_form_gamma_sweep.json",
-    save_path="./results/closed_form_gamma_accuracy.png",
+    save_path="./results/context_identification/lagrange_gamma/closed_form_gamma_accuracy.png",
 ):
     results = load_json(results_path)
     color = plt.cm.plasma(0.6)
@@ -90,7 +90,7 @@ def plot_accuracy(
 
 def plot_gamma_trajectory(
     results_path="./data/closed_form_gamma_sweep.json",
-    save_path="./results/closed_form_gamma_trajectory.png",
+    save_path="./results/context_identification/lagrange_gamma/closed_form_gamma_trajectory.png",
 ):
     results = load_json(results_path)
     color = plt.cm.plasma(0.6)
@@ -126,7 +126,7 @@ def plot_gamma_trajectory(
 
 def plot_mse(
     results_path="./data/closed_form_gamma_sweep.json",
-    save_path="./results/closed_form_gamma_accuracy.png",
+    save_path="./results/context_identification/lagrange_gamma/closed_form_gamma_accuracy.png",
 ):
     results = load_json(results_path)
     color = plt.cm.plasma(0.6)
@@ -170,15 +170,15 @@ if __name__ == "__main__":
 
     plot_accuracy(
         results_path="./data/lagrange_gamma_sweep.json",
-        save_path="./results/lagrange_gamma_accuracy.png",
+        save_path="./results/context_identification/lagrange_gamma/lagrange_gamma_accuracy.png",
     )
 
     plot_gamma_trajectory(
         results_path="./data/lagrange_gamma_sweep.json",
-        save_path="./results/lagrange_gamma_trajectory.png",
+        save_path="./results/context_identification/lagrange_gamma/lagrange_gamma_trajectory.png",
     )
     
     # plot_mse(
     #     results_path="./data/regress_lagrange_gamma_sweep.json",
-    #     save_path="./results/regress_lagrange_gamma_loss.png",
+    #     save_path="./results/context_identification/lagrange_gamma/regress_lagrange_gamma_loss.png",
     # )

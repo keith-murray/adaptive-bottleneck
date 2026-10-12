@@ -14,8 +14,7 @@ from adaptive_bottleneck.models import (
 )
 from adaptive_bottleneck.tasks import BlockComparison
 from adaptive_bottleneck.save import save_results_json
-from block_adaptive_bottleneck import *
-from scripts.meta_opt_gamma import run_gamma_meta_training
+from block_adaptive_bottleneck import bce_with_logits, accuracy_from_logits, eval_step
 
 
 ## Training functions

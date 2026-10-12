@@ -6,7 +6,7 @@ codes to the context items. The input dimension grows from L to 2*L.
 Gamma is updated by differentiating through a short unrolled inner loop of
 model-parameter updates, providing a richer gradient signal than direct backprop.
 
-Label modes: 'feature' and 'position' only (no dual-decoder 'both' mode).
+Label modes: 'feature' and 'position'.
 """
 
 from pathlib import Path

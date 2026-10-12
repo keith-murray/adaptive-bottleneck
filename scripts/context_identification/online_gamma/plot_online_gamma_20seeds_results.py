@@ -1,6 +1,6 @@
 """Plot results from the online gamma 20-seeds sweep.
 
-Produces two figures saved to results/:
+Produces two figures saved to results/context_identification/online_gamma/:
   1. online_gamma_20seeds_accuracy.png   — test-accuracy curves (1×2 panels)
   2. online_gamma_20seeds_trajectory.png — per-epoch gamma trajectory (1×2 panels)
 
@@ -47,7 +47,7 @@ def plot_mean_sem(ax, epochs, curves, color, label=None):
 
 def plot_accuracy(
     results_path="./data/online_gamma_20seeds_sweep.json",
-    save_path="./results/online_gamma_20seeds_accuracy.png",
+    save_path="./results/context_identification/online_gamma/online_gamma_20seeds_accuracy.png",
 ):
     results = load_json(results_path)
     color = plt.cm.plasma(0.6)
@@ -81,7 +81,7 @@ def plot_accuracy(
 
 def plot_gamma_trajectory(
     results_path="./data/online_gamma_20seeds_sweep.json",
-    save_path="./results/online_gamma_20seeds_trajectory.png",
+    save_path="./results/context_identification/online_gamma/online_gamma_20seeds_trajectory.png",
 ):
     results = load_json(results_path)
     color = plt.cm.plasma(0.6)
@@ -118,7 +118,7 @@ def plot_gamma_trajectory(
 
 def plot_accuracy_gamma_combined(
     results_path="./data/online_gamma_20seeds_sweep.json",
-    save_path="./results/online_gamma_20seeds_combined.png",
+    save_path="./results/context_identification/online_gamma/online_gamma_20seeds_combined.png",
     epoch_start=0,
     epoch_end=None,   # None = plot all epochs
     shade="sem",
@@ -207,12 +207,12 @@ if __name__ == "__main__":
 
     # plot_accuracy(
     #     results_path="./data/online_gamma_20seeds_sweep.json",
-    #     save_path="./results/online_gamma_20seeds_accuracy.png",
+    #     save_path="./results/context_identification/online_gamma/online_gamma_20seeds_accuracy.png",
     # )
 
     # plot_gamma_trajectory(
     #     results_path="./data/online_gamma_20seeds_sweep.json",
-    #     save_path="./results/online_gamma_20seeds_trajectory.png",
+    #     save_path="./results/context_identification/online_gamma/online_gamma_20seeds_trajectory.png",
     # )
 
     # Zoom into late training

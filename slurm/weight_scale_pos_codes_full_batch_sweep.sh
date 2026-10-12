@@ -78,7 +78,7 @@ LABEL_MODE=${LABEL_MODES[$(( REM % 2 ))]}
 
 cd "$HOME/adaptive-bottleneck"   # FILL IN: adjust if the repo lives elsewhere on the cluster
 
-source /usr/people/km3199/.local/bin/env
+source "$HOME/.local/bin/env"   # puts uv on PATH (default uv install location); adjust for your cluster
 
 uv run python scripts/context_identification/pos_codes/weight_scale_pos_codes_full_batch_sweep.py \
     --scale-idx "$SCALE_IDX" \

@@ -78,7 +78,7 @@
 
 cd "$HOME/adaptive-bottleneck"   # FILL IN: adjust if the repo lives elsewhere on the cluster
 
-source /usr/people/km3199/.local/bin/env
+source "$HOME/.local/bin/env"   # puts uv on PATH (default uv install location); adjust for your cluster
 
 combo_idx=$(( SLURM_ARRAY_TASK_ID / 10 ))
 seed=$(( SLURM_ARRAY_TASK_ID % 10 ))

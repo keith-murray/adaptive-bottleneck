@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from adaptive-bottleneck!")
+"""Adaptive relational bottleneck: gamma-interpolated attention models, synthetic tasks, and analysis utilities."""

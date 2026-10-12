@@ -3,7 +3,7 @@
 This script is a variant of learnable_gamma_sweep.py that adds one-hot positional
 codes to the context items. The input dimension grows from L to 2*L.
 
-Label modes: 'feature' and 'position' only (no dual-decoder 'both' mode).
+Label modes: 'feature' and 'position'.
 """
 
 from pathlib import Path

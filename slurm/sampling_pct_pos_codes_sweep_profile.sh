@@ -67,7 +67,7 @@
 
 cd "$HOME/adaptive-bottleneck"   # FILL IN: adjust if the repo lives elsewhere on the cluster
 
-source /usr/people/km3199/.local/bin/env
+source "$HOME/.local/bin/env"   # puts uv on PATH (default uv install location); adjust for your cluster
 
 /usr/bin/time -v uv run python scripts/context_identification/pos_codes/sampling_pct_pos_codes_sweep.py \
     --combo-idx 2 --seed 0 \

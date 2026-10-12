@@ -81,7 +81,7 @@ def plot_individual_trajectories(ax, epochs, curves, color):
 
 def plot_accuracy(
     results_path="./data/pos_codes_comparison_sweep.json",
-    save_path="./results/pos_codes_comparison_accuracy.png",
+    save_path="./results/context_identification/pos_codes/pos_codes_comparison_accuracy.png",
 ):
     results = load_json(results_path)
 
@@ -123,7 +123,7 @@ def plot_accuracy(
 
 def plot_gamma_trajectory(
     results_path="./data/pos_codes_comparison_sweep.json",
-    save_path="./results/pos_codes_comparison_trajectory.png",
+    save_path="./results/context_identification/pos_codes/pos_codes_comparison_trajectory.png",
 ):
     results = load_json(results_path)
     adaptive_conds = ("adaptive", "adaptive_pos")
@@ -169,7 +169,7 @@ def plot_gamma_trajectory(
 
 def make_table(
     results_path="./data/pos_codes_comparison_sweep.json",
-    save_path="./results/pos_codes_comparison_table.csv",
+    save_path="./results/context_identification/pos_codes/pos_codes_comparison_table.csv",
     n_final=100,   # average over last n_final epochs for stability
 ):
     """Compute mean ± sem of final test accuracy and save as CSV.

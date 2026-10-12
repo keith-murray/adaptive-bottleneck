@@ -8,6 +8,6 @@
 
 cd "$HOME/adaptive-bottleneck"
 
-source /usr/people/km3199/.local/bin/env
+source "$HOME/.local/bin/env"   # puts uv on PATH (default uv install location); adjust for your cluster
 
 uv run python scripts/context_identification/pos_codes/plot_sampling_pct_pos_codes_results.py
